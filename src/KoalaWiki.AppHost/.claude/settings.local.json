@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build)",
+      "Bash(dotnet run:*)",
+      "Bash(csc:*)",
+      "Bash(./test_tracker.exe)",
+      "Bash(dotnet new:*)",
+      "Bash(rm:*)",
+      "Bash(dotnet build:*)",
+      "Bash(find:*)",
+      "Bash(tail:*)"
+    ],
+    "deny": []
+  }
+}

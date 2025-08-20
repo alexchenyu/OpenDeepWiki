@@ -1,176 +1,153 @@
-import { API_URL } from '../../services/api';
-import { ResponsesInput, StreamEvent } from '../../types/chat';
+import { ChatInput, StreamEvent } from '../types';
 
-
-
+/**
+ * 聊天服务 - 处理与后端API的通信
+ */
 export class ChatService {
   private baseUrl: string;
+  private abortController: AbortController | null = null;
 
-  constructor(baseUrl: string = API_URL) {
+  constructor(baseUrl: string = '') {
     this.baseUrl = baseUrl;
   }
 
-  // 发送消息并处理SSE流
-  async* sendMessage(input: ResponsesInput): AsyncIterableIterator<StreamEvent> {
-    const url = `${this.baseUrl}/api/Responses`;
-    const token = localStorage.getItem("userToken");
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
+  /**
+   * 发送消息并处理流式响应
+   */
+  async sendMessage(
+    input: ChatInput,
+    onStreamEvent: (event: StreamEvent) => void,
+    onError?: (error: Error) => void
+  ): Promise<void> {
+    // 取消之前的请求
+    if (this.abortController) {
+      this.abortController.abort();
     }
 
-    const response = await fetch(url, {
-      headers,
-      method: "POST",
-      body: JSON.stringify(input),
-    });
+    this.abortController = new AbortController();
 
-    if (response.status === 401) {
-      localStorage.removeItem("refreshToken");
-      localStorage.removeItem("userInfo");
-      localStorage.setItem("redirectPath", window.location.pathname);
-      window.location.href = "/login";
-      return;
-    }
+    try {
+      const response = await fetch(`${this.baseUrl}/api/Responses`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream'
+        },
+        body: JSON.stringify(input),
+        signal: this.abortController.signal
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      try {
-        const json = JSON.parse(errorText);
-        throw new Error(json.message || 'API请求失败');
-      } catch {
-        throw new Error(errorText || '网络请求失败');
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
+
+      if (!response.body) {
+        throw new Error('Response body is null');
+      }
+
+      await this.processStream(response.body, onStreamEvent);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('Request was aborted');
+        return;
+      }
+      
+      console.error('Chat service error:', error);
+      if (onError) {
+        onError(error instanceof Error ? error : new Error('Unknown error'));
+      }
+    } finally {
+      this.abortController = null;
     }
+  }
 
-    const reader = response.body!.getReader();
-    const decoder = new TextDecoder("utf-8");
+  /**
+   * 处理SSE流
+   */
+  private async processStream(
+    body: ReadableStream<Uint8Array>,
+    onStreamEvent: (event: StreamEvent) => void
+  ): Promise<void> {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
     let buffer = '';
-
 
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) {
-          break;
-        }
-
-        // 将新数据添加到缓冲区
-        const chunk = decoder.decode(value, { stream: true });
-        buffer += chunk;
-        // 处理完整的事件
-        const events = buffer.split("\n\n");
         
-        // 保留最后一个可能不完整的事件
-        buffer = events.pop() || '';
+        if (done) break;
 
-        for (const event of events) {
-          if (event.trim()) {
-            
-            const dataLine = event.split("\n").find(line => line.startsWith("data:"));
-            if (dataLine) {
-              const jsonData = dataLine.replace("data:", "").trim();
-              
-              
-              if (jsonData === "[done]" || jsonData === '{"type":"done"}') {
-                yield { type: 'done' };
-                return;
-              }
-              
+        buffer += decoder.decode(value, { stream: true });
+        
+        // 处理完整的事件
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // 保留最后一个不完整的行
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim();
+            if (data && data !== '[DONE]') {
               try {
-                const parsedData = JSON.parse(jsonData);
-                yield parsedData as StreamEvent;
+                const event: StreamEvent = JSON.parse(data);
+                onStreamEvent(event);
               } catch (error) {
+                console.error('Failed to parse SSE event:', error, 'Data:', data);
               }
             }
           }
         }
       }
     } finally {
-      reader.cancel();
+      reader.releaseLock();
     }
   }
 
-  // 验证域名权限
-  async validateDomain(appId: string, domain: string): Promise<{ isValid: boolean; reason?: string; appConfig?: any }> {
-    try {
-      const token = localStorage.getItem("userToken");
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
+  /**
+   * 取消当前请求
+   */
+  cancelRequest(): void {
+    if (this.abortController) {
+      this.abortController.abort();
+      this.abortController = null;
+    }
+  }
 
-      const response = await fetch(`${this.baseUrl}/api/AppConfig/validatedomain`, {
+  /**
+   * 验证域名
+   */
+  async validateDomain(domain: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/validate-domain`, {
         method: 'POST',
-        headers,
-        body: JSON.stringify({
-          appId,
-          domain
-        })
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ domain })
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Domain validation request failed:', errorText);
-        return { isValid: false, reason: 'ValidationRequestFailed' };
-      }
-
-      const result = await response.json();
-      return {
-        isValid: result.isValid,
-        reason: result.reason,
-        appConfig: result.appConfig
-      };
+      
+      return response.ok;
     } catch (error) {
-      console.error('Domain validation failed:', error);
-      return { isValid: false, reason: 'NetworkError' };
+      console.error('Domain validation error:', error);
+      return false;
     }
   }
 
-  // 获取应用配置
-  async getAppConfig(appId: string): Promise<{ 
-    organizationName: string; 
-    repositoryName: string; 
-    name: string;
-    enableDomainValidation: boolean;
-    allowedDomains: string[];
-  } | null> {
+  /**
+   * 获取应用配置
+   */
+  async getAppConfig(): Promise<any> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/AppConfig/public/${appId}`, {
-        method: 'GET',
-        headers: {
-          "Content-Type": "application/json",
-        }
-      });
-
-      if (!response.ok) {
-        console.error('Failed to get app config:', response.status);
-        return null;
+      const response = await fetch(`${this.baseUrl}/api/app-config`);
+      if (response.ok) {
+        return await response.json();
       }
-
-      const appConfig = await response.json();
-      if (!appConfig) {
-        return null;
-      }
-
-      return {
-        organizationName: appConfig.organizationName,
-        repositoryName: appConfig.repositoryName,
-        name: appConfig.name,
-        enableDomainValidation: appConfig.enableDomainValidation,
-        allowedDomains: appConfig.allowedDomains || []
-      };
     } catch (error) {
-      console.error('Failed to get app config:', error);
-      return null;
+      console.error('Failed to fetch app config:', error);
     }
+    return null;
   }
 }
 
-export const chatService = new ChatService(); 
+// 单例实例
+export const chatService = new ChatService();

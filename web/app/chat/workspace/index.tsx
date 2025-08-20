@@ -1,548 +1,315 @@
-'use client'
+'use client';
 
-import { useState, useEffect, useRef } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import ChatInput from "../components/ChatInput";
-import Message from "./message";
-import { chatService } from "../services/chatService";
-import { chatDB, ChatMessage, Conversation } from "../utils/indexedDB";
-import { MessageContentType, MessageItem, MessageContentReasoningItem, MessageContentTextItem, MessageContentToolItem, MessageContentGitIssuesItem, Base64Content, MessageContentImageItem } from "../../types/chat";
-import { ThemeProvider } from "@lobehub/ui";
-import { useTheme } from "next-themes";
+import React, { useState, useEffect, useRef } from 'react';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/use-toast';
+import { Loader2, AlertCircle, MessageSquare, Plus, X } from 'lucide-react';
+import ChatMessages from '../components/ChatMessages';
+import ChatInput from '../components/ChatInput';
+import EmptyState from '../components/EmptyState';
+import SessionList from '../components/SessionList';
+import { ChatStateService } from '../services/chatStateService';
+import { Message, ContentItem, ContentItemType, StreamEvent } from '../types';
 
 interface WorkspaceProps {
-    organizationName: string;
-    name: string;
-    appId?: string;
+  appId?: string;
+  organizationName: string;
+  repositoryName: string;
+  chatStateService: ChatStateService;
 }
 
+interface WorkspaceState {
+  showSessionList: boolean;
+}
 
-export default function Workspace({ organizationName, name, appId }: WorkspaceProps) {
-    const { theme } = useTheme();
-    const [messages, setMessages] = useState<MessageItem[]>([]);
-    const [conversationId, setConversationId] = useState<string>('');
-    const [isLoading, setIsLoading] = useState<boolean>(false);
-    const [deepResearch, setDeepResearch] = useState<boolean>(false);
-    const abortControllerRef = useRef<AbortController>(
-        new AbortController()
-    );
-    const messagesEndRef = useRef<HTMLDivElement>(null);
+const Workspace: React.FC<WorkspaceProps> = ({
+  appId,
+  organizationName,
+  repositoryName,
+  chatStateService,
+}) => {
+  const { toast } = useToast();
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showSessionList, setShowSessionList] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-    const scrollToBottom = () => {
-        if (messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-        }
+  useEffect(() => {
+    const initializeWorkspace = async () => {
+      try {
+        const sessionId = await chatStateService.createSession(
+          `${organizationName}/${repositoryName}`,
+          { organizationName, repositoryName, appId }
+        );
+        setCurrentSessionId(sessionId);
+        
+        const sessionMessages = await chatStateService.getSessionMessages(sessionId);
+        setMessages(sessionMessages);
+      } catch (error) {
+        console.error('初始化工作区失败:', error);
+        setError('初始化失败');
+      }
     };
 
-    useEffect(() => {
-        scrollToBottom();
-    }, [messages]);
+    initializeWorkspace();
 
-    // 初始化会话
-    useEffect(() => {
-        initializeConversation();
-    }, [organizationName, name]);
-
-    const initializeConversation = async () => {
-        try {
-            // 获取现有会话
-            const conversations = await chatDB.getConversations(organizationName, name);
-
-            if (conversations.length > 0) {
-                // 使用最新的会话
-                const latestConversation = conversations[0];
-                setConversationId(latestConversation.id);
-
-                // 加载该会话的历史消息
-                await loadHistoryMessages(latestConversation.id);
-            } else {
-                // 创建新会话
-                const newConversationId = uuidv4();
-                const conversation: Conversation = {
-                    id: newConversationId,
-                    title: `${organizationName}/${name} 的对话`,
-                    createdAt: Date.now(),
-                    updatedAt: Date.now(),
-                    organizationName: organizationName,
-                    repositoryName: name,
-                };
-
-                await chatDB.saveConversation(conversation);
-                setConversationId(newConversationId);
-            }
-        } catch (error) {
-            console.error('初始化会话失败:', error);
+    const unsubscribeMessage = chatStateService.onMessageUpdate((message) => {
+      setMessages(prev => {
+        const index = prev.findIndex(m => m.id === message.id);
+        if (index >= 0) {
+          const newMessages = [...prev];
+          newMessages[index] = message;
+          return newMessages;
+        } else {
+          return [...prev, message];
         }
-    };
+      });
+    });
 
-    const loadHistoryMessages = async (convId: string) => {
-        try {
-            const chatMessages = await chatDB.getMessages(convId);
-            const messageItems: MessageItem[] = chatMessages.map(msg => ({
-                id: msg.id,
-                content: msg.content as any,
-                role: msg.role,
-                createdAt: new Date(msg.timestamp),
-                updatedAt: new Date(msg.timestamp),
-            }));
-
-            setMessages(messageItems);
-        } catch (error) {
-            console.error('加载历史消息失败:', error);
-        }
-    };
-
-    const uuidv4 = () => {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-            var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
-        });
-    }
-
-    const handleSendMessage = async (message: string, imageContents?: Base64Content[]) => {
-        if (isLoading) {
-            return;
-        }
-
-        setIsLoading(true);
-
-        try {
-            // 创建用户消息内容
-            const userMessageContent: (MessageContentTextItem | MessageContentImageItem)[] = [
-                {
-                    type: MessageContentType.Text,
-                    content: message
-                } as MessageContentTextItem
-            ];
-
-            // 如果有图片，添加到content中
-            if (imageContents && imageContents.length > 0) {
-                userMessageContent.push({
-                    type: MessageContentType.Image,
-                    imageContents: imageContents
-                } as MessageContentImageItem);
-            }
-
-            const userMessage = {
-                id: uuidv4(),
-                content: userMessageContent,
-                role: "user",
-                createdAt: new Date(),
-                updatedAt: new Date(),
-            }
-
-            messages.push(userMessage);
-            const aiMessage: MessageItem = {
-                id: uuidv4(),
-                content: [
-                    {
-                        type: MessageContentType.Text,
-                        content: ''
-                    }
-                ],
-                role: "assistant",
-                createdAt: new Date(Date.now() + 1000),  // 时间+1秒
-                updatedAt: new Date(Date.now() + 1000),  // 时间+1秒
-            }
-
-            messages.push(aiMessage);
-
-            setMessages([...messages]);
-
-            // 保存用户消息到IndexedDB
-            if (conversationId) {
-                try {
-                    const userChatMessage: ChatMessage = {
-                        id: userMessage.id,
-                        type: 'message_content',
-                        content: userMessage.content as any,
-                        role: 'user',
-                        timestamp: userMessage.createdAt.getTime(),
-                        conversationId: conversationId,
-                    };
-                    await chatDB.saveMessage(userChatMessage);
-
-                    // 更新会话的最后消息
-                    await chatDB.updateConversation(conversationId, {
-                        // 提取第一条text内容
-                        lastMessage: (userMessage.content as any[]).find(item => item.type === MessageContentType.Text)?.content || '',
-                        updatedAt: Date.now(),
-                    });
-                } catch (error) {
-                    console.error('保存用户消息失败:', error);
-                }
-            }
-
-            const requestData = {
-                messages: messages.map(x => {
-                    return {
-                        role: x.role as "user" | "assistant" | "system",
-                        content: x.content,
-                    }
-                }),
-                organizationName: organizationName,
-                name: name,
-                deepResearch: deepResearch,
-                appId: appId,
-                abortController: abortControllerRef.current,
-            }
-
-            let currentToolCalls: any[] = [];
-            let currentContentType: MessageContentType | null = null;
-            let isFirstContent = true;
-
-            for await (const event of chatService.sendMessage(requestData)) {
-                if (abortControllerRef.current?.signal.aborted) {
-                    break;
-                }
-
-                switch (event.type) {
-                    case 'reasoning_content':
-                        // 推理内容流式更新
-                        if (currentContentType !== MessageContentType.Reasoning) {
-                            // 如果当前类型不是推理类型，新增一个推理内容项
-                            const reasoningItem: MessageContentReasoningItem = {
-                                type: MessageContentType.Reasoning,
-                                content: ''
-                            };
-                            (aiMessage.content as any[]).push(reasoningItem);
-                            currentContentType = MessageContentType.Reasoning;
-                        }
-
-                        // 更新最后一个推理内容项
-                        const allContent = aiMessage.content as any[];
-                        const lastReasoningItem = allContent.filter(item => item.type === MessageContentType.Reasoning).pop();
-                        if (lastReasoningItem) {
-                            lastReasoningItem.content += event.content || '';
-                        }
-
-                        setMessages([...messages]);
-                        break;
-
-                    case 'git_issues':
-                        // Git Issues 搜索结果
-                        if (event.content && event.content.length > 0) {
-                            // 检查上一个内容项是否是相关的工具调用
-                            const allContent = aiMessage.content as any[];
-                            const lastToolItem = allContent
-                                .filter(item => item.type === MessageContentType.Tool)
-                                .pop();
-
-                            if (lastToolItem &&
-                                (lastToolItem.toolName === 'Github-SearchIssues' ||
-                                    lastToolItem.toolName === 'Gitee-SearchIssues')) {
-                                // 将Issues数据存储到工具调用的结果中
-                                lastToolItem.toolResult = JSON.stringify({
-                                    GitIssues: event.content
-                                });
-                            } else {
-                                // 如果不是相关工具调用，则创建独立的GitIssues内容项
-                                const gitIssuesItem: MessageContentGitIssuesItem = {
-                                    type: MessageContentType.GitIssues,
-                                    gitIssues: JSON.parse(event.content)
-                                };
-                                (aiMessage.content as any[]).push(gitIssuesItem);
-                            }
-
-                            currentContentType = MessageContentType.GitIssues;
-                            setMessages([...messages]);
-                        }
-                        break;
-
-                    case 'tool_call':
-                        // 工具调用
-                        if (event.tool_call_id && event.function_name) {
-                            // 新的工具调用开始，添加到content数组
-                            if (currentContentType !== MessageContentType.Tool) {
-                                currentContentType = MessageContentType.Tool;
-                            }
-
-                            const toolItem: MessageContentToolItem = {
-                                type: MessageContentType.Tool,
-                                toolId: event.tool_call_id,
-                                toolResult: '',
-                                toolArgs: event.function_arguments || '',
-                                toolName: event.function_name || ''
-                            };
-                            (aiMessage.content as any[]).push(toolItem);
-
-                            currentToolCalls.push({
-                                id: event.tool_call_id,
-                                functionName: event.function_name,
-                                arguments: event.function_arguments || '',
-                            });
-                        } else if (currentToolCalls.length > 0) {
-                            // 更新最后一个工具调用的参数
-                            const lastToolCall = currentToolCalls[currentToolCalls.length - 1];
-                            lastToolCall.arguments += event.function_arguments || '';
-
-                            // 同时更新content数组中的工具项
-                            const allContent = aiMessage.content as any[];
-                            const lastToolItem = allContent.filter(item => item.type === MessageContentType.Tool).pop();
-                            if (lastToolItem) {
-                                lastToolItem.toolArgs += event.function_arguments || '';
-                            }
-                        }
-
-                        setMessages([...messages]);
-                        break;
-
-                    case 'message_content':
-                        // 消息内容流式更新
-                        if (isFirstContent) {
-                            // 第一次内容，更新默认的第一个text内容项
-                            const allContent = aiMessage.content as any[];
-                            const firstTextItem = allContent.find(item => item.type === MessageContentType.Text);
-                            if (firstTextItem) {
-                                firstTextItem.content += event.content || '';
-                            }
-                            currentContentType = MessageContentType.Text;
-                            isFirstContent = false;
-                        } else {
-                            // 后续内容，检查是否需要新增内容项
-                            if (currentContentType !== MessageContentType.Text) {
-                                // 当前类型不是text，新增一个text内容项
-                                const textItem: MessageContentTextItem = {
-                                    type: MessageContentType.Text,
-                                    content: ''
-                                };
-                                (aiMessage.content as any[]).push(textItem);
-                                currentContentType = MessageContentType.Text;
-                            }
-
-                            // 更新最后一个text内容项
-                            const allContent = aiMessage.content as any[];
-                            const lastTextItem = allContent.filter(item => item.type === MessageContentType.Text).pop();
-                            if (lastTextItem) {
-                                lastTextItem.content += event.content || '';
-                            }
-                        }
-
-                        setMessages([...messages]);
-                        break;
-
-                    case 'message_start':
-                        break;
-
-                    case 'done':
-                        setMessages([...messages]);
-
-                        // 保存AI消息到IndexedDB
-                        if (conversationId) {
-                            try {
-                                const aiChatMessage: ChatMessage = {
-                                    id: aiMessage.id,
-                                    type: 'message_content',
-                                    content: aiMessage.content as any,
-                                    role: 'assistant',
-                                    timestamp: aiMessage.createdAt.getTime(),
-                                    conversationId: conversationId,
-                                    metadata: {}
-                                };
-                                await chatDB.saveMessage(aiChatMessage);
-
-                                // 更新会话的最后消息
-                                const allContent = aiMessage.content as any[];
-                                const lastMessageContent = allContent
-                                    .find(item => item.type === MessageContentType.Text);
-                                const lastMessage = lastMessageContent?.content || '';
-
-                                await chatDB.updateConversation(conversationId, {
-                                    lastMessage: lastMessage.substring(0, 100) + (lastMessage.length > 100 ? '...' : ''),
-                                    updatedAt: Date.now(),
-                                });
-                            } catch (error) {
-                                console.error('保存AI消息失败:', error);
-                            }
-                        }
-
-                        break;
-                }
-            }
-        } finally {
-            setIsLoading(false);
-        }
-    }
-
-    const handleStopGeneration = () => {
-        abortControllerRef.current?.abort();
+    const unsubscribeStream = chatStateService.onStreamEvent((event) => {
+      if (event.type === 'error') {
         setIsLoading(false);
+        setError(event.data?.message || '发生未知错误');
+      } else if (event.type === 'done') {
+        setIsLoading(false);
+      }
+    });
+
+    return () => {
+      unsubscribeMessage();
+      unsubscribeStream();
+    };
+  }, [chatStateService, organizationName, repositoryName, appId]);
+
+  const handleSendMessage = async (content: string, files?: File[]) => {
+    if (!currentSessionId || isLoading) return;
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      abortControllerRef.current = new AbortController();
+
+      const contentItems: ContentItem[] = [];
+
+      if (content.trim()) {
+        contentItems.push({
+          type: ContentItemType.Text,
+          content: content.trim()
+        });
+      }
+
+      if (files && files.length > 0) {
+        for (const file of files) {
+          if (file.type.startsWith('image/')) {
+            const base64 = await fileToBase64(file);
+            contentItems.push({
+              type: ContentItemType.Image,
+              content: base64,
+              mimeType: file.type,
+              fileName: file.name
+            });
+          }
+        }
+      }
+
+      if (contentItems.length === 0) {
+        toast({
+          title: '消息不能为空',
+          description: '请输入文本或上传文件',
+          variant: 'destructive',
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      const userMessage = await chatStateService.addUserMessage(
+        currentSessionId,
+        contentItems
+      );
+
+      setMessages(prev => [...prev, userMessage]);
+
+      const aiMessage = await chatStateService.createAIMessage(currentSessionId);
+      setMessages(prev => [...prev, aiMessage]);
+
+      await chatStateService.sendMessage(
+        currentSessionId,
+        messages.concat([userMessage]),
+        abortControllerRef.current.signal
+      );
+
+    } catch (error: any) {
+      console.error('发送消息失败:', error);
+      if (error.name !== 'AbortError') {
+        setError(error.message || '发送消息失败');
+        toast({
+          title: '发送失败',
+          description: error.message || '发送消息时发生错误',
+          variant: 'destructive',
+        });
+      }
+    } finally {
+      setIsLoading(false);
+      abortControllerRef.current = null;
     }
+  };
 
-
-    const handleDelete = (messageId: string) => {
-        setMessages(messages.filter(x => x.id !== messageId));
-
-        // 删除IndexedDB
-        chatDB.deleteMessage(messageId);
+  const handleStopGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsLoading(false);
     }
+  };
 
-    const handleClear = () => {
-        setMessages([]);
-        // 清空IndexedDB
-        chatDB.clearMessages(conversationId);
+  const handleNewChat = async () => {
+    try {
+      const sessionId = await chatStateService.createSession(
+        `${organizationName}/${repositoryName}`,
+        { organizationName, repositoryName, appId }
+      );
+      setCurrentSessionId(sessionId);
+      setMessages([]);
+      setError(null);
+      setShowSessionList(false);
+    } catch (error) {
+      console.error('创建新对话失败:', error);
+      toast({
+        title: '创建失败',
+        description: '创建新对话时发生错误',
+        variant: 'destructive',
+      });
     }
+  };
 
+  const handleSessionSelect = async (sessionId: string) => {
+    try {
+      const sessionMessages = await chatStateService.getSessionMessages(sessionId);
+      setCurrentSessionId(sessionId);
+      setMessages(sessionMessages);
+      setError(null);
+      setShowSessionList(false);
+    } catch (error) {
+      console.error('Failed to load session:', error);
+      setError('加载会话失败');
+    }
+  };
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  if (error && messages.length === 0) {
     return (
-        <ThemeProvider
-            style={{
-                height: '100%',
-            }}
-            themeMode={theme === "system" ? "auto" : theme as any}
-        >
-            <div className="workspace-container">
-                <div className="flex flex-col gap-6 h-full">
-                    <div className="messages-container flex-1 overflow-y-auto min-h-0 overflow-x-hidden px-1">
+      <div className="flex flex-col items-center justify-center h-full p-6 text-center">
+        <AlertCircle className="w-12 h-12 text-destructive mb-4" />
+        <h3 className="text-lg font-semibold mb-2">出现错误</h3>
+        <p className="text-muted-foreground mb-4">{error}</p>
+        <Button onClick={handleNewChat} variant="outline">
+          重新开始
+        </Button>
+      </div>
+    );
+  }
 
-                        {
-                            messages.length === 0 && (
-                                <div className="empty-state">
-                                    <div className="empty-state-content">
-                                        <div className="empty-state-icon">
-                                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                <path d="M12 2L13.09 8.26L20 9L13.09 9.74L12 16L10.91 9.74L4 9L10.91 8.26L12 2Z" fill="currentColor" fillOpacity="0.1" />
-                                                <path d="M12 2L13.09 8.26L20 9L13.09 9.74L12 16L10.91 9.74L4 9L10.91 8.26L12 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                                <circle cx="18" cy="6" r="2" fill="currentColor" fillOpacity="0.2" />
-                                                <circle cx="6" cy="18" r="2" fill="currentColor" fillOpacity="0.2" />
-                                            </svg>
-                                        </div>
-                                        <h3 className="empty-state-title">欢迎使用 AI 智能助手</h3>
-                                        <p className="empty-state-description">
-                                            OpenDeepWiki 基于先进的 AI 技术，为您的项目提供智能代码分析和问答服务。
-                                            <br />
-                                            开始对话，探索更多可能性！
-                                        </p>
-                                        <div className="empty-state-actions">
-                                            <a
-                                                href="https://github.com/AIDotNet/OpenDeepWiki"
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="learn-more-link"
-                                            >
-                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                    <path d="M12 2C6.48 2 2 6.48 2 12C2 16.42 4.87 20.17 8.84 21.5C9.34 21.58 9.5 21.27 9.5 21C9.5 20.77 9.5 20.14 9.5 19.31C6.73 19.91 6.14 17.97 6.14 17.97C5.68 16.81 5.03 16.5 5.03 16.5C4.12 15.88 5.1 15.9 5.1 15.9C6.1 15.97 6.63 16.93 6.63 16.93C7.5 18.45 8.97 18 9.54 17.76C9.63 17.11 9.89 16.67 10.17 16.42C7.95 16.17 5.62 15.31 5.62 11.5C5.62 10.39 6 9.5 6.65 8.79C6.55 8.54 6.2 7.5 6.75 6.15C6.75 6.15 7.59 5.88 9.5 7.17C10.29 6.95 11.15 6.84 12 6.84C12.85 6.84 13.71 6.95 14.5 7.17C16.41 5.88 17.25 6.15 17.25 6.15C17.8 7.5 17.45 8.54 17.35 8.79C18 9.5 18.38 10.39 18.38 11.5C18.38 15.32 16.04 16.16 13.81 16.41C14.17 16.72 14.5 17.33 14.5 18.26C14.5 19.6 14.5 20.68 14.5 21C14.5 21.27 14.66 21.59 15.17 21.5C19.14 20.16 22 16.42 22 12C22 6.48 17.52 2 12 2Z" fill="currentColor" />
-                                                </svg>
-                                                了解更多
-                                            </a>
-                                        </div>
-                                    </div>
-                                </div>
-                            )
-                        }
-                        {messages.map((message) => (
-                            <Message
-                                organizationName={organizationName}
-                                repositoryName={name}
-                                key={message.id}
-                                messageItem={message}
-                                handleDelete={handleDelete}
-                            />
-                        ))}
-                        <div ref={messagesEndRef} />
-                    </div>
-                    <div className="chat-input-container">
-                        <ChatInput
-                            loading={isLoading}
-                            onClear={handleClear}
-                            onSend={handleSendMessage}
-                            onStop={handleStopGeneration}
-                            onDeepResearch={() => setDeepResearch(!deepResearch)}
-                            deepResearch={deepResearch}
-                        />
-                    </div>
-                </div>
-
-                <style jsx global>{`
-                .workspace-container {
-                    height: 100% !important;
-                    display: flex !important;
-                    flex-direction: column !important;
-                }
-
-                .messages-container::-webkit-scrollbar {
-                    width: 6px !important;
-                }
-
-                .messages-container::-webkit-scrollbar-track {
-                    background: transparent !important;
-                }
-
-                .messages-container::-webkit-scrollbar-thumb {
-                    background: hsl(var(--border)) !important;
-                    border-radius: 3px !important;
-                }
-
-                .messages-container::-webkit-scrollbar-thumb:hover {
-                    background: hsl(var(--border) / 0.8) !important;
-                }
-
-                .empty-state {
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    min-height: 400px;
-                    padding: 48px 24px;
-                }
-
-                .empty-state-content {
-                    text-align: center;
-                    max-width: 480px;
-                    padding: 48px 32px;
-                }
-
-                .empty-state-icon {
-                    color: hsl(var(--primary));
-                    margin-bottom: 24px;
-                    display: flex;
-                    justify-content: center;
-                }
-
-                .empty-state-title {
-                    font-size: 20px;
-                    font-weight: 600;
-                    color: hsl(var(--foreground));
-                    margin: 0 0 12px 0;
-                }
-
-                .empty-state-description {
-                    font-size: 14px;
-                    color: hsl(var(--muted-foreground));
-                    line-height: 1.6;
-                    margin: 0 0 24px 0;
-                }
-
-                .empty-state-actions {
-                    display: flex;
-                    justify-content: center;
-                }
-
-                .learn-more-link {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 8px;
-                    padding: 8px 16px;
-                    background: hsl(var(--muted));
-                    color: hsl(var(--muted-foreground));
-                    text-decoration: none;
-                    border-radius: 8px;
-                    font-size: 14px;
-                    font-weight: 500;
-                    transition: all 0.2s ease;
-                }
-
-                .learn-more-link:hover {
-                    background: hsl(var(--muted) / 0.8);
-                    color: hsl(var(--foreground));
-                }
-
-                .chat-input-container {
-                    padding: 16px;
-                    border-top: 1px solid hsl(var(--border));
-                    background: hsl(var(--background));
-                }
-            `}</style>
+  return (
+    <div className="flex h-full">
+      {/* 会话列表侧边栏 */}
+      {showSessionList && (
+        <div className="w-80 border-r bg-gray-50 flex flex-col">
+          <div className="p-3 border-b bg-white">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-gray-900">对话历史</h2>
+              <button
+                onClick={() => setShowSessionList(false)}
+                className="p-1 hover:bg-gray-100 rounded"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
-        </ThemeProvider>
-    )
-}
+          </div>
+          <SessionList
+            currentSessionId={currentSessionId}
+            onSessionSelect={handleSessionSelect}
+            onNewSession={handleNewChat}
+          />
+        </div>
+      )}
+      
+      {/* 主聊天区域 */}
+      <div className="flex-1 flex flex-col">
+        {/* 顶部工具栏 */}
+        <div className="border-b bg-background p-3">
+          <div className="flex items-center justify-between">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowSessionList(!showSessionList)}
+              className="flex items-center gap-2"
+            >
+              <MessageSquare className="h-4 w-4" />
+              对话历史
+            </Button>
+            
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleNewChat}
+              className="flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              新建对话
+            </Button>
+          </div>
+        </div>
+        
+        {messages.length === 0 ? (
+          <EmptyState onNewChat={handleNewChat} />
+        ) : (
+          <div className="flex-1 overflow-hidden">
+            <ChatMessages messages={messages} isLoading={isLoading} />
+          </div>
+        )}
+        
+        <div className="border-t bg-background">
+          <ChatInput
+            onSendMessage={handleSendMessage}
+            onStopGeneration={handleStopGeneration}
+            disabled={!currentSessionId}
+            isLoading={isLoading}
+          />
+        </div>
+        
+        {error && (
+          <div className="px-4 py-2 bg-destructive/10 border-t border-destructive/20">
+            <div className="flex items-center gap-2 text-sm text-destructive">
+              <AlertCircle className="w-4 h-4" />
+              <span>{error}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setError(null)}
+                className="ml-auto h-6 px-2 text-xs"
+              >
+                关闭
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default Workspace;

@@ -6,37 +6,38 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Eraser, ImagePlus, Trash2, X, Loader2, Send } from 'lucide-react';
 import { toast } from 'sonner';
-import { Base64Content } from '../../types/chat';
-import { Toggle } from '@/components/ui/toggle';
+import { ContentItem, ContentItemType } from '../types';
+
+interface ImageContent {
+  content: string; // base64 data
+  fileName?: string;
+  mimeType: string;
+}
 
 interface ChatInputProps {
   value?: string;
   placeholder?: string;
-  loading?: boolean;
+  isLoading?: boolean;
   disabled?: boolean;
-  onSend?: (message: string, imageContents?: Base64Content[]) => void;
+  onSend?: (content: ContentItem[]) => void;
   onStop?: () => void;
   onChange?: (value: string) => void;
   onClear?: () => void;
-  onDeepResearch?: () => void;
-  deepResearch?: boolean;
 }
 
 const ChatInput: React.FC<ChatInputProps> = ({
   value,
   placeholder = '输入消息...',
-  loading = false,
+  isLoading = false,
   disabled = false,
   onSend,
   onStop,
   onChange,
   onClear,
-  onDeepResearch,
-  deepResearch = false,
 }) => {
   const [inputValue, setInputValue] = useState(value || '');
   const [imageUploading, setImageUploading] = useState(false);
-  const [imageList, setImageList] = useState<Base64Content[]>([]);
+  const [imageList, setImageList] = useState<ImageContent[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -47,8 +48,28 @@ const ChatInput: React.FC<ChatInputProps> = ({
   };
 
   const handleSend = () => {
-    if ((inputValue.trim() || imageList.length > 0) && !loading && !disabled) {
-      onSend?.(inputValue.trim(), imageList.length > 0 ? imageList : undefined);
+    if ((inputValue.trim() || imageList.length > 0) && !isLoading && !disabled) {
+      const content: ContentItem[] = [];
+      
+      // 添加文本内容
+      if (inputValue.trim()) {
+        content.push({
+          type: ContentItemType.Text,
+          content: inputValue.trim()
+        });
+      }
+      
+      // 添加图片内容
+      imageList.forEach(image => {
+        content.push({
+          type: ContentItemType.Image,
+          content: `data:${image.mimeType};base64,${image.content}`,
+          fileName: image.fileName,
+          mimeType: image.mimeType
+        });
+      });
+      
+      onSend?.(content);
       setInputValue('');
       setImageList([]);
 
@@ -107,7 +128,8 @@ const ChatInput: React.FC<ChatInputProps> = ({
       setImageUploading(true);
       const base64Content = await convertFileToBase64(file);
       setImageList([...imageList, {
-        data: base64Content,
+        content: base64Content,
+        fileName: file.name,
         mimeType: file.type
       }]);
       setImageUploading(false);
@@ -165,8 +187,8 @@ const ChatInput: React.FC<ChatInputProps> = ({
           {imageList.map((image, index) => (
             <div key={index} className="relative w-20 h-20 rounded-md overflow-hidden border border-border group">
               <img
-                src={`data:${image.mimeType};base64,${image.data}`}
-                alt="上传图片"
+                src={`data:${image.mimeType};base64,${image.content}`}
+                alt={image.fileName || '上传图片'}
                 className="w-full h-full object-cover"
               />
               <button
@@ -188,20 +210,13 @@ const ChatInput: React.FC<ChatInputProps> = ({
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
-          disabled={disabled || loading}
+          disabled={disabled || isLoading}
           className="min-h-[60px] max-h-[200px] resize-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0 shadow-none p-3 pb-12"
         />
 
         {/* 工具栏 - 固定在底部 */}
         <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between p-2 border-t bg-muted/10">
           <div className="flex items-center gap-1">
-            <Toggle 
-              onClick={() => {
-                onDeepResearch?.();
-              }}
-              aria-label="Toggle italic">
-              深入研究
-            </Toggle>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -209,7 +224,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 rounded-full"
-                    disabled={disabled || loading || imageUploading}
+                    disabled={disabled || isLoading || imageUploading}
                     onClick={handleUploadClick}
                   >
                     {imageUploading ?
@@ -260,7 +275,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
           </div>
 
           <div>
-            {loading ? (
+            {isLoading ? (
               <Button
                 size="sm"
                 variant="destructive"
@@ -293,8 +308,6 @@ const ChatInput: React.FC<ChatInputProps> = ({
         accept="image/*"
         onChange={handleImageUpload}
       />
-
-      {/* 删除确认弹窗相关代码已移除 */}
     </div>
   );
 };

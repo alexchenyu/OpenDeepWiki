@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:diataxis.fr)"
+    ],
+    "deny": [],
+    "defaultMode": "acceptEdits"
+  }
+}

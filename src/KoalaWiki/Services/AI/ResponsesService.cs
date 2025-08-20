@@ -183,76 +183,85 @@ public class ResponsesService(IKoalaWikiContext koala) : FastApi
         // 添加消息历史记录
         foreach (var msg in input.Messages)
         {
-            if (msg.Role.ToLower() == "user")
+            var role = msg.Role.ToLower() switch
             {
-                if (msg.Content?.Count == 1 && msg.Content.Any(x => x.Type == ResponsesMessageContentType.Text))
-                {
-                    history.AddUserMessage(msg.Content.First().Content);
-                    continue;
-                }
+                "user" => AuthorRole.User,
+                "assistant" => AuthorRole.Assistant,
+                "system" => AuthorRole.System,
+                _ => AuthorRole.User
+            };
 
-                var contents = new ChatMessageContentItemCollection();
+            var contents = new ChatMessageContentItemCollection();
+            var hasContent = false;
 
-                foreach (var messageContentInput in msg.Content)
+            foreach (var contentItem in msg.Content)
+            {
+                switch (contentItem.Type)
                 {
-                    if (messageContentInput.Type == ResponsesMessageContentType.Text)
-                    {
-                        contents.Add(new TextContent(messageContentInput.Content));
-                    }
-                    else if (messageContentInput.Type == ResponsesMessageContentType.Image &&
-                             messageContentInput.ImageContents != null)
-                    {
-                        foreach (var imageContent in messageContentInput.ImageContents)
+                    case ContentItemType.Text:
+                        if (contentItem is TextContentInput textContent && !string.IsNullOrEmpty(textContent.Text))
                         {
-                            contents.Add(new BinaryContent(
-                                $"data:{imageContent.MimeType};base64,{imageContent.Data}"));
+                            contents.Add(new TextContent(textContent.Text));
+                            hasContent = true;
                         }
-                    }
-                    else
-                    {
-                    }
+
+                        break;
+                    case ContentItemType.Image:
+                        if (contentItem is ImageContentInput imageContent)
+                        {
+                            if (imageContent.ImageUrl.Url.StartsWith("data:"))
+                            {
+                                contents.Add(new BinaryContent(imageContent.ImageUrl.Url));
+                                hasContent = true;
+                            }
+                        }
+
+                        break;
+                    case ContentItemType.ToolCalls:
+                        if (contentItem is ToolCallsContentInput toolCallsContent)
+                        {
+                            foreach (var toolCall in toolCallsContent.ToolCalls)
+                            {
+                                contents.Add(new TextContent(
+                                    $"Tool call: {toolCall.Function.Name}({toolCall.Function.Arguments})"));
+                                hasContent = true;
+                            }
+                        }
+
+                        break;
+                    case ContentItemType.ToolResult:
+                        if (contentItem is ToolResultContentInput toolResultContent)
+                        {
+                            contents.Add(new TextContent($"Tool result: {toolResultContent.Result}"));
+                            hasContent = true;
+                        }
+
+                        break;
                 }
             }
-            else if (msg.Role.ToLower() == "assistant")
-            {
-                // 判断，如果当前消息是最后一条，并且content=空则跳过
-                if (msg.Content == null ||
-                    msg.Content.Count > 0 && msg.Content.All(x => string.IsNullOrEmpty(x.Content)))
-                {
-                    continue;
-                }
 
-                if (msg.Content?.Count == 1 && msg.Content.Any(x => x.Type == ResponsesMessageContentType.Text))
-                {
-                    history.AddUserMessage(msg.Content.First().Content);
-                    continue;
-                }
-
-                var contents = new ChatMessageContentItemCollection();
-                foreach (var messageContentInput in msg.Content)
-                {
-                    if (messageContentInput.Type == ResponsesMessageContentType.Text)
-                    {
-                        contents.Add(new TextContent(messageContentInput.Content));
-                    }
-                    else if (messageContentInput.Type == ResponsesMessageContentType.Image)
-                    {
-                        // 图片内容
-                        var imageContent = new ImageContent(messageContentInput.Content);
-                        contents.Add(new BinaryContent(
-                            $"data:{imageContent.MimeType};base64,{imageContent.Data}"));
-                    }
-                    else
-                    {
-                    }
-                }
-            }
-            else if (msg.Role.ToLower() == "system")
+            if (hasContent)
             {
-                if (msg.Content?.Count == 1 && msg.Content.Any(x => x.Type == ResponsesMessageContentType.Text))
+                if (contents.Count == 1 && contents.First() is TextContent singleText)
                 {
-                    history.AddUserMessage(msg.Content.First().Content);
-                    continue;
+                    // 单个文本内容直接添加
+                    if (role == AuthorRole.User)
+                    {
+                        history.AddUserMessage(singleText.Text!);
+                    }
+                    else if (role == AuthorRole.Assistant)
+                    {
+                        history.AddAssistantMessage(singleText.Text!);
+                    }
+                    else if (role == AuthorRole.System)
+                    {
+                        history.AddSystemMessage(singleText.Text!);
+                    }
+                }
+                else
+                {
+                    // 多个内容项添加
+                    history.AddMessage(role, contents);
                 }
             }
         }
@@ -290,9 +299,19 @@ public class ResponsesService(IKoalaWikiContext koala) : FastApi
 
             if (DocumentContext.DocumentStore != null && DocumentContext.DocumentStore.GitIssus.Count > 0)
             {
-                await context.Response.WriteAsync(
-                    $"data: {{\"type\": \"git_issues\", \"content\": {JsonSerializer.Serialize(DocumentContext.DocumentStore.GitIssus, JsonSerializerOptions.Web)}}}\n\n");
+                var gitIssuesEvent = new StreamEventOutput
+                {
+                    Type = "git_issues",
+                    Delta = new ContentDeltaOutput
+                    {
+                        ContentType = "git_issues",
+                        Text = JsonSerializer.Serialize(DocumentContext.DocumentStore.GitIssus,
+                            JsonSerializerOptions.Web)
+                    }
+                };
 
+                await context.Response.WriteAsync(
+                    $"data: {JsonSerializer.Serialize(gitIssuesEvent, JsonSerializerOptions.Web)}\n\n");
                 await context.Response.Body.FlushAsync();
 
                 DocumentContext.DocumentStore.GitIssus.Clear();
@@ -316,20 +335,31 @@ public class ResponsesService(IKoalaWikiContext koala) : FastApi
                             if (isMessage)
                             {
                                 isMessage = false;
-
-                                await context.Response.WriteAsync($"data: {{\"type\": \"message_end\"}}\n\n");
+                                var messageEndEvent = new StreamEventOutput { Type = "message_end" };
+                                await context.Response.WriteAsync(
+                                    $"data: {JsonSerializer.Serialize(messageEndEvent, JsonSerializerOptions.Web)}\n\n");
                             }
 
                             isReasoning = true;
-
-                            // 发送开启推理事件
-                            await context.Response.WriteAsync($"data: {{\"type\": \"reasoning_start\"}}\n\n");
+                            var reasoningStartEvent = new StreamEventOutput { Type = "reasoning_start" };
+                            await context.Response.WriteAsync(
+                                $"data: {JsonSerializer.Serialize(reasoningStartEvent, JsonSerializerOptions.Web)}\n\n");
                         }
 
+                        var reasoningEvent = new StreamEventOutput
+                        {
+                            Type = StreamEventType.ContentDelta,
+                            Delta = new ContentDeltaOutput
+                            {
+                                ContentType = ContentItemType.Reasoning,
+                                Reasoning = reasoningContent
+                            }
+                        };
+
                         await context.Response.WriteAsync(
-                            $"data: {{\"type\": \"reasoning_content\", \"content\": {JsonSerializer.Serialize(reasoningContent)}}}\n\n");
+                            $"data: {JsonSerializer.Serialize(reasoningEvent, JsonSerializerOptions.Web)}\n\n");
                         await context.Response.Body.FlushAsync();
-                        reasoningTokens += reasoningContent.Length / 4; // 粗略估算令牌数
+                        reasoningTokens += reasoningContent.Length / 4;
                         continue;
                     }
                 }
@@ -339,11 +369,14 @@ public class ResponsesService(IKoalaWikiContext koala) : FastApi
             {
                 // 结束推理
                 isReasoning = false;
-                await context.Response.WriteAsync($"data: {{\"type\": \"reasoning_end\"}}\n\n");
+                var reasoningEndEvent = new StreamEventOutput { Type = "reasoning_end" };
+                await context.Response.WriteAsync(
+                    $"data: {JsonSerializer.Serialize(reasoningEndEvent, JsonSerializerOptions.Web)}\n\n");
 
                 isMessage = true;
-                // 开启普通消息
-                await context.Response.WriteAsync($"data: {{\"type\": \"message_start\"}}\n\n");
+                var messageStartEvent = new StreamEventOutput { Type = "message_start" };
+                await context.Response.WriteAsync(
+                    $"data: {JsonSerializer.Serialize(messageStartEvent, JsonSerializerOptions.Web)}\n\n");
             }
 
             if (message.ToolCallUpdates.Count > 0)
@@ -351,15 +384,20 @@ public class ResponsesService(IKoalaWikiContext koala) : FastApi
                 // 工具调用更新
                 foreach (var toolCallUpdate in message.ToolCallUpdates)
                 {
-                    var toolCallData = new
+                    var toolCallEvent = new StreamEventOutput
                     {
-                        type = "tool_call",
-                        tool_call_id = toolCallUpdate.ToolCallId,
-                        function_name = toolCallUpdate.FunctionName,
-                        function_arguments = Encoding.UTF8.GetString(toolCallUpdate.FunctionArgumentsUpdate),
+                        Type = StreamEventType.ToolCalls,
+                        Delta = new ContentDeltaOutput
+                        {
+                            ContentType = ContentItemType.ToolCalls,
+                            ToolCallId = toolCallUpdate.ToolCallId,
+                            FunctionName = toolCallUpdate.FunctionName,
+                            FunctionArguments = Encoding.UTF8.GetString(toolCallUpdate.FunctionArgumentsUpdate)
+                        }
                     };
 
-                    await context.Response.WriteAsync($"data: {JsonSerializer.Serialize(toolCallData)}\n\n");
+                    await context.Response.WriteAsync(
+                        $"data: {JsonSerializer.Serialize(toolCallEvent, JsonSerializerOptions.Web)}\n\n");
                     await context.Response.Body.FlushAsync();
                 }
 
@@ -373,17 +411,23 @@ public class ResponsesService(IKoalaWikiContext koala) : FastApi
                 if (!isMessage)
                 {
                     isMessage = true;
-                    // 开启普通消息
-                    await context.Response.WriteAsync($"data: {{\"type\": \"message_start\"}}\n\n");
+                    var messageStartEvent = new StreamEventOutput { Type = "message_start" };
+                    await context.Response.WriteAsync(
+                        $"data: {JsonSerializer.Serialize(messageStartEvent, JsonSerializerOptions.Web)}\n\n");
                 }
 
-                var messageData = new
+                var contentEvent = new StreamEventOutput
                 {
-                    type = "message_content",
-                    content = chatItem.Content
+                    Type = StreamEventType.ContentDelta,
+                    Delta = new ContentDeltaOutput
+                    {
+                        ContentType = ContentItemType.Text,
+                        Text = chatItem.Content
+                    }
                 };
 
-                await context.Response.WriteAsync($"data: {JsonSerializer.Serialize(messageData)}\n\n");
+                await context.Response.WriteAsync(
+                    $"data: {JsonSerializer.Serialize(contentEvent, JsonSerializerOptions.Web)}\n\n");
                 await context.Response.Body.FlushAsync();
                 messageCount++;
             }
@@ -392,16 +436,22 @@ public class ResponsesService(IKoalaWikiContext koala) : FastApi
         // 确保最后结束消息
         if (isMessage)
         {
-            await context.Response.WriteAsync($"data: {{\"type\": \"message_end\"}}\n\n");
+            var messageEndEvent = new StreamEventOutput { Type = "message_end" };
+            await context.Response.WriteAsync(
+                $"data: {JsonSerializer.Serialize(messageEndEvent, JsonSerializerOptions.Web)}\n\n");
         }
 
         if (isReasoning)
         {
-            await context.Response.WriteAsync($"data: {{\"type\": \"reasoning_end\"}}\n\n");
+            var reasoningEndEvent = new StreamEventOutput { Type = "reasoning_end" };
+            await context.Response.WriteAsync(
+                $"data: {JsonSerializer.Serialize(reasoningEndEvent, JsonSerializerOptions.Web)}\n\n");
         }
 
         // 发送结束事件
-        await context.Response.WriteAsync($"data: {{\"type\": \"done\"}}\n\n");
+        var doneEvent = new StreamEventOutput { Type = StreamEventType.Done };
+        await context.Response.WriteAsync(
+            $"data: {JsonSerializer.Serialize(doneEvent, JsonSerializerOptions.Web)}\n\n");
         await context.Response.Body.FlushAsync();
 
         // 设置聊天活动的统计信息

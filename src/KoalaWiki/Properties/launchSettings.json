@@ -8,7 +8,7 @@
       "applicationUrl": "http://localhost:5085",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "TASK_MAX_SIZE_PER_USER": "10",
+        "TASK_MAX_SIZE_PER_USER": "5",
         "ENABLE_WAREHOUSE_DESCRIPTION_TASK": "false",
         "EnableWarehouseFunctionPromptTask": "false",
         "ENABLE_INCREMENTAL_UPDATE": "false",

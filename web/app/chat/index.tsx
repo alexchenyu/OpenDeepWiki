@@ -20,37 +20,10 @@ import {
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
 import Workspace from './workspace';
+import { ChatStateService } from './services/chatStateService';
+import { ChatStorageService } from './services/storageService';
+import { chatService } from './services/chatService';
 
-// 保持原有的内部消息类型
-export interface ChatMessageItem {
-  id: string;
-  role: 'user' | 'assistant';
-  content: Array<{
-    type: string;
-    content?: string;
-    toolId?: string;
-    toolResult?: string;
-    toolArgs?: string;
-    [key: string]: any;
-  }>;
-  createAt: number;
-  updateAt: number;
-  status?: 'loading' | 'complete' | 'error';
-  meta: {
-    avatar: string;
-    title: string;
-    backgroundColor: string;
-  };
-}
-
-// 文件类型接口
-interface ReferenceFile {
-  path: string;
-  title: string;
-  content?: string;
-}
-
-// Tailwind CSS 类名常量
 const styles = {
   floatingButton: "fixed bottom-6 right-6 w-12 h-12 rounded-full flex items-center justify-center shadow-lg z-[10] transition-all duration-300 hover:scale-105 hover:shadow-xl",
   chatContainer: "fixed bottom-6 right-6 w-[550px] h-[700px] bg-card rounded-lg shadow-xl z-[10] flex flex-col overflow-hidden transition-all duration-300 border",
@@ -64,32 +37,19 @@ const styles = {
   headerActions: "flex gap-2",
   actionButton: "w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors",
   chatContent: "flex-1 flex flex-col overflow-hidden bg-muted/30",
-  messagesContainer: "flex-1 overflow-hidden",
-  emptyState: "flex flex-col items-center justify-center h-full p-6 text-center text-muted-foreground",
-  emptyIcon: "text-5xl mb-4 text-primary opacity-80",
-  emptyTitle: "text-lg mb-2 text-foreground font-semibold",
-  emptyDescription: "text-sm leading-relaxed max-w-[280px] mx-auto",
-  emptyButton: "mt-4 rounded-lg"
 };
 
 interface FloatingChatProps {
-  // 应用配置
   appId?: string;
   organizationName?: string;
   repositoryName?: string;
-
-  // 外观配置
-  expandIcon?: string; // base64 图标
-  closeIcon?: string; // base64 图标
+  expandIcon?: string;
+  closeIcon?: string;
   title?: string;
   theme?: 'light' | 'dark';
-
-  // 功能配置
   enableDomainValidation?: boolean;
   allowedDomains?: string[];
-  embedded?: boolean; // 嵌入式模式
-
-  // 回调函数
+  embedded?: boolean;
   onError?: (error: string) => void;
   onValidationFailed?: (domain: string) => void;
 }
@@ -109,19 +69,18 @@ const FloatingChat: React.FC<FloatingChatProps> = ({
   onValidationFailed,
 }) => {
   const { toast } = useToast();
-
-  // 状态管理
+  
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
   const [domainValidated, setDomainValidated] = useState(false);
+  const [chatStateService, setChatStateService] = useState<ChatStateService | null>(null);
 
-
-  // 初始化
   useEffect(() => {
+    let isMounted = true;
+    
     const init = async () => {
       try {
-        // 域名验证（嵌入式模式下跳过）
         if (!embedded && enableDomainValidation && allowedDomains.length > 0) {
           const currentDomain = window.location.hostname;
           const isValidDomain = allowedDomains.some(domain =>
@@ -134,25 +93,42 @@ const FloatingChat: React.FC<FloatingChatProps> = ({
           }
         }
 
+        if (!isMounted) return;
         setDomainValidated(true);
 
-        // 嵌入式模式下自动展开
-        if (embedded) {
+        const storageService = new ChatStorageService();
+        await storageService.initialize();
+        
+        if (!isMounted) return;
+        const stateService = new ChatStateService();
+        await stateService.init();
+        
+        if (!isMounted) return;
+        setChatStateService(stateService);
+
+        if (embedded && isMounted) {
           setTimeout(() => {
-            setIsExpanded(true);
+            if (isMounted) {
+              setIsExpanded(true);
+            }
           }, 100);
         }
 
       } catch (error) {
         console.error('初始化失败:', error);
-        onError?.('初始化失败');
+        if (isMounted) {
+          onError?.('初始化失败');
+        }
       }
     };
 
     init();
-  }, [organizationName, repositoryName, enableDomainValidation, allowedDomains, embedded]);
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [organizationName, repositoryName, enableDomainValidation, allowedDomains, embedded, onError, onValidationFailed]);
 
-  // 切换展开状态
   const toggleExpanded = () => {
     if (!domainValidated) {
       toast({
@@ -167,25 +143,20 @@ const FloatingChat: React.FC<FloatingChatProps> = ({
     setIsMinimized(false);
   };
 
-  // 最小化
   const minimize = () => {
     setIsMinimized(true);
   };
 
-  // 最大化/还原
   const toggleMaximize = () => {
     setIsMaximized(!isMaximized);
   };
 
-  // 关闭
   const close = () => {
     setIsExpanded(false);
     setIsMinimized(false);
     setIsMaximized(false);
   };
 
-
-  // 如果域名验证失败，不渲染组件
   if (enableDomainValidation && !domainValidated) {
     return null;
   }
@@ -203,12 +174,9 @@ const FloatingChat: React.FC<FloatingChatProps> = ({
         </Button>
       )}
 
-      {/* 聊天窗口 */}
       {(isExpanded || embedded) && domainValidated && (
         <Card
-          style={{
-            padding: 0,
-          }}
+          style={{ padding: 0 }}
           className={cn(
             styles.chatContainer,
             isMinimized && styles.chatContainerMinimized,
@@ -216,7 +184,6 @@ const FloatingChat: React.FC<FloatingChatProps> = ({
             embedded && styles.chatContainerEmbedded
           )}
         >
-          {/* 聊天窗口头部 */}
           {!embedded && (
             <div className={styles.chatHeader}>
               <div className={styles.headerTitle}>
@@ -301,15 +268,13 @@ const FloatingChat: React.FC<FloatingChatProps> = ({
             </div>
           )}
 
-          {/* 聊天内容区域 - 最小化时隐藏 */}
-          {!isMinimized && (
-            <div style={{
-              background: 'transparent',
-            }} className={styles.chatContent}>
+          {!isMinimized && chatStateService && (
+            <div style={{ background: 'transparent' }} className={styles.chatContent}>
               <Workspace
                 appId={appId}
                 organizationName={organizationName}
-                name={repositoryName}
+                repositoryName={repositoryName}
+                chatStateService={chatStateService}
               />
             </div>
           )}

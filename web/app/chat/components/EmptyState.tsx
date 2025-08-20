@@ -1,74 +1,78 @@
 'use client';
 
 import React from 'react';
+import { MessageCircle, Sparkles, FileText, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
-import { Brain, Github, MessageSquare, Code, Sparkles } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { Separator } from '@/components/ui/separator';
+import { ContentItem, ContentItemType } from '../types';
 
 interface EmptyStateProps {
-  className?: string;
+  onSendMessage?: (content: ContentItem[]) => void;
 }
 
-const EmptyState: React.FC<EmptyStateProps> = ({ className }) => {
+const EmptyState: React.FC<EmptyStateProps> = ({ onSendMessage }) => {
+  const handleQuickStart = (text: string) => {
+    if (onSendMessage) {
+      const content: ContentItem[] = [{
+        type: ContentItemType.Text,
+        content: text
+      }];
+      onSendMessage(content);
+    }
+  };
+
+  const quickStartOptions = [
+    {
+      icon: <FileText className="w-4 h-4" />,
+      title: '代码解释',
+      description: '解释代码功能和实现原理',
+      prompt: '请帮我解释这段代码的功能和实现原理'
+    },
+    {
+      icon: <Search className="w-4 h-4" />,
+      title: '代码审查',
+      description: '检查代码质量和潜在问题',
+      prompt: '请帮我审查这段代码，指出可能的问题和改进建议'
+    },
+    {
+      icon: <Sparkles className="w-4 h-4" />,
+      title: '代码优化',
+      description: '提供性能和结构优化建议',
+      prompt: '请帮我优化这段代码的性能和结构'
+    }
+  ];
+
   return (
-    <div className={cn(
-      "flex items-center justify-center min-h-[400px] p-6",
-      className
-    )}>
-      <Card className="max-w-md w-full border border-muted">
-        <CardHeader className="pb-3 flex flex-col items-center space-y-3">
-          <div className="w-14 h-14 bg-primary/10 rounded-full flex items-center justify-center">
-            <Brain className="w-7 h-7 text-primary" />
-          </div>
-          <h3 className="text-lg font-medium text-center">
-            欢迎使用 AI 智能助手
-          </h3>
-        </CardHeader>
-        
-        <CardContent className="text-center space-y-4 pb-6">
-          <p className="text-muted-foreground text-sm">
-            基于先进的 AI 技术，为您的项目提供智能代码分析和问答服务
-          </p>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-            <div className="flex flex-col items-center p-3 rounded-lg border bg-muted/30 text-sm">
-              <MessageSquare className="w-5 h-5 text-primary mb-2" />
-              <span className="font-medium">智能问答</span>
+    <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+      <div className="mb-8">
+        <div className="w-16 h-16 mx-auto mb-4 bg-primary/10 rounded-full flex items-center justify-center">
+          <MessageCircle className="w-8 h-8 text-primary" />
+        </div>
+        <h2 className="text-2xl font-semibold mb-2">开始对话</h2>
+        <p className="text-muted-foreground max-w-md">
+          我是您的AI编程助手，可以帮助您解释代码、审查代码质量、提供优化建议等。
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full max-w-2xl">
+        {quickStartOptions.map((option, index) => (
+          <Button
+            key={index}
+            variant="outline"
+            className="h-auto p-4 flex flex-col items-start text-left hover:bg-muted/50 transition-colors"
+            onClick={() => handleQuickStart(option.prompt)}
+          >
+            <div className="flex items-center mb-2">
+              {option.icon}
+              <span className="ml-2 font-medium">{option.title}</span>
             </div>
-            <div className="flex flex-col items-center p-3 rounded-lg border bg-muted/30 text-sm">
-              <Code className="w-5 h-5 text-primary mb-2" />
-              <span className="font-medium">代码分析</span>
-            </div>
-          </div>
-        </CardContent>
-        
-        <CardFooter className="flex flex-col gap-4 pt-0">
-          <Separator />
-          <div className="flex justify-center w-full">
-            <Button
-              variant="outline"
-              size="sm"
-              asChild
-              className="gap-2"
-            >
-              <a
-                href="https://github.com/AIDotNet/OpenDeepWiki"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <Github className="w-4 h-4" />
-                了解更多
-              </a>
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground w-full text-center flex items-center justify-center gap-1">
-            <Sparkles className="w-3 h-3" />
-            提示：您可以询问代码问题、请求解释或寻求开发建议
-          </p>
-        </CardFooter>
-      </Card>
+            <p className="text-sm text-muted-foreground">{option.description}</p>
+          </Button>
+        ))}
+      </div>
+
+      <div className="mt-8 text-sm text-muted-foreground">
+        <p>💡 提示：您可以直接输入问题，或者上传图片进行讨论</p>
+      </div>
     </div>
   );
 };
