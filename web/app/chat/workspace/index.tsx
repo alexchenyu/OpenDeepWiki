@@ -7,7 +7,7 @@ import { Loader2, AlertCircle, MessageSquare, Plus, X } from 'lucide-react';
 import ChatMessages from '../components/ChatMessages';
 import ChatInput from '../components/ChatInput';
 import EmptyState from '../components/EmptyState';
-import SessionList from '../components/SessionList';
+import { SessionList } from '../components/SessionList';
 import { ChatStateService } from '../services/chatStateService';
 import { Message, ContentItem, ContentItemType, StreamEvent } from '../types';
 

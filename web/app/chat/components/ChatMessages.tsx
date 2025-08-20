@@ -166,7 +166,7 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({
   const renderMessage = (message: Message) => {
     const isUser = message.role === 'user';
     const isError = message.status === MessageStatus.Error;
-    const isLoading = message.status === MessageStatus.Loading;
+    const isLoading = message.status === MessageStatus.Streaming;
 
     return (
       <div
@@ -210,7 +210,7 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({
           
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Clock className="h-3 w-3" />
-            <span>{formatTimestamp(message.createdAt)}</span>
+            <span>{formatTimestamp(message.createAt)}</span>
             {!isUser && !isLoading && (
               <Button
                 variant="ghost"
