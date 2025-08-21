@@ -97,7 +97,7 @@ const FloatingChat: React.FC<FloatingChatProps> = ({
         setDomainValidated(true);
 
         const storageService = new ChatStorageService();
-        await storageService.initialize();
+        await storageService.init();
         
         if (!isMounted) return;
         const stateService = new ChatStateService();

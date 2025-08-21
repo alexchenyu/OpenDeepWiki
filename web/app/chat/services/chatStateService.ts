@@ -143,20 +143,20 @@ export class ChatStateService {
 
     switch (event.type) {
       case 'content_delta':
-        if (event.delta) {
-          shouldUpdate = this.handleContentDelta(event.delta, aiMessage);
+        if (event.data) {
+          shouldUpdate = this.handleContentDelta(event.data, aiMessage);
         }
         break;
 
       case 'tool_calls':
-        if (event.delta) {
-          shouldUpdate = this.handleToolCalls(event.delta, aiMessage);
+        if (event.data) {
+          shouldUpdate = this.handleToolCalls(event.data, aiMessage);
         }
         break;
 
       case 'git_issues':
-        if (event.delta) {
-          shouldUpdate = this.handleGitIssues(event.delta, aiMessage);
+        if (event.data) {
+          shouldUpdate = this.handleGitIssues(event.data, aiMessage);
         }
         break;
 
