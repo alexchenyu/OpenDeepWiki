@@ -48,6 +48,11 @@ jobs:
           VERSION_TEMPLATE=$(grep -oP '(?<=<Version>)[^<]*' Directory.Packages.props)
           VERSION_SUFFIX=$(grep -oP '(?<=<VersionSuffix>)[^<]*' Directory.Packages.props)
           
+          # Handle missing VersionSuffix by defaulting to 0
+          if [ -z "$VERSION_SUFFIX" ]; then
+            VERSION_SUFFIX="0"
+          fi
+          
           # Replace $(VersionSuffix) with actual value
           VERSION=$(echo "$VERSION_TEMPLATE" | sed "s/\$(VersionSuffix)/$VERSION_SUFFIX/g")
           

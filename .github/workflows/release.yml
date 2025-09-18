@@ -232,6 +232,12 @@ jobs:
             # 从Directory.Packages.props文件中提取版本号并解析MSBuild变量
             VERSION_TEMPLATE=$(grep -oP '(?<=<Version>)[^<]*' Directory.Packages.props)
             VERSION_SUFFIX=$(grep -oP '(?<=<VersionSuffix>)[^<]*' Directory.Packages.props)
+            
+            # Handle missing VersionSuffix by defaulting to 0
+            if [ -z "$VERSION_SUFFIX" ]; then
+              VERSION_SUFFIX="0"
+            fi
+            
             VERSION=$(echo "$VERSION_TEMPLATE" | sed "s/\$(VersionSuffix)/$VERSION_SUFFIX/g")
             echo "version=v$VERSION" >> $GITHUB_OUTPUT
             echo "Extracted version: $VERSION"
