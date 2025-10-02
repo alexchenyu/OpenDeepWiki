@@ -1135,6 +1135,7 @@ public class StatisticsService(
                 // 创建新的统计数据
                 var dailyStats = new DailyStatistics
                 {
+                    Id = Guid.NewGuid().ToString("N"),
                     Date = targetDate,
                     NewUsersCount = newUsersCount,
                     NewRepositoriesCount = newRepositoriesCount,

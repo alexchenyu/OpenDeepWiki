@@ -178,71 +178,109 @@ public static partial class GenerateThinkCatalogueService
             MaxTokens = DocumentsHelper.GetMaxTokens(OpenAIOptions.AnalysisModel)
         };
 
-        int retry = 1;
         var inputTokenCount = 0;
         var outputTokenCount = 0;
 
-        // 添加超时控制
-        var cts = new CancellationTokenSource(TimeSpan.FromMinutes(20));
+        const int maxStreamAttempts = 3;
+        var contentAvailable = false;
+        var consecutiveEmptyResponses = 0;
 
-        retry:
-        try
+        for (var streamAttempt = 1; streamAttempt <= maxStreamAttempts; streamAttempt++)
         {
-            // 流式获取响应 - 添加取消令牌和异常处理
-            await foreach (var item in chat.GetStreamingChatMessageContentsAsync(
-                               history,
-                               settings,
-                               analysisModel,
-                               cts.Token).ConfigureAwait(false))
-            {
-                // 定期检查取消
-                cts.Token.ThrowIfCancellationRequested();
+            var timeout = streamAttempt == 1
+                ? TimeSpan.FromMinutes(20)
+                : TimeSpan.FromMinutes(5);
 
-                switch (item.InnerContent)
+            using var cts = new CancellationTokenSource(timeout);
+
+            try
+            {
+                // 流式获取响应 - 添加取消令牌和异常处理
+                await foreach (var item in chat.GetStreamingChatMessageContentsAsync(
+                                   history,
+                                   settings,
+                                   analysisModel,
+                                   cts.Token).ConfigureAwait(false))
                 {
-                    case StreamingChatCompletionUpdate { Usage.InputTokenCount: > 0 } content:
-                        inputTokenCount += content.Usage.InputTokenCount;
-                        outputTokenCount += content.Usage.OutputTokenCount;
-                        break;
+                    // 定期检查取消
+                    cts.Token.ThrowIfCancellationRequested();
 
-                    case StreamingChatCompletionUpdate tool when tool.ToolCallUpdates.Count > 0:
-                        break;
+                    switch (item.InnerContent)
+                    {
+                        case StreamingChatCompletionUpdate { Usage.InputTokenCount: > 0 } content:
+                            inputTokenCount += content.Usage.InputTokenCount;
+                            outputTokenCount += content.Usage.OutputTokenCount;
+                            break;
 
-                    case StreamingChatCompletionUpdate value:
-                        var text = value.ContentUpdate.FirstOrDefault()?.Text;
-                        if (!string.IsNullOrEmpty(text))
-                        {
-                            Console.Write(text);
-                        }
+                        case StreamingChatCompletionUpdate tool when tool.ToolCallUpdates.Count > 0:
+                            break;
 
-                        break;
+                        case StreamingChatCompletionUpdate value:
+                            var text = value.ContentUpdate.FirstOrDefault()?.Text;
+                            if (!string.IsNullOrEmpty(text))
+                            {
+                                Console.Write(text);
+                            }
+
+                            break;
+                    }
                 }
+
+                if (!string.IsNullOrWhiteSpace(catalogueTool.Content))
+                {
+                    contentAvailable = true;
+                    break;
+                }
+
+                consecutiveEmptyResponses++;
+
+                if (consecutiveEmptyResponses >= 2)
+                {
+                    Console.WriteLine("目录生成响应为空，尝试执行质量补救...");
+                    await RefineResponse(history, chat, settings, analysisModel, catalogueTool, consecutiveEmptyResponses);
+
+                    if (!string.IsNullOrWhiteSpace(catalogueTool.Content))
+                    {
+                        contentAvailable = true;
+                        break;
+                    }
+                }
+
+                if (streamAttempt == maxStreamAttempts)
+                {
+                    break;
+                }
+
+                Console.WriteLine("AI生成目录返回空内容，正在重试...");
+                await Task.Delay(TimeSpan.FromMilliseconds(1500 * streamAttempt), CancellationToken.None);
             }
-        }
-        catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
-        {
-            retry++;
-            if (retry <= 3)
+            catch (OperationCanceledException) when (cts.IsCancellationRequested)
             {
-                Console.WriteLine($"超时，正在重试 ({retry}/3)...");
-                await Task.Delay(2000, CancellationToken.None);
+                consecutiveEmptyResponses = 0;
 
-                // 正确地重置超时令牌
-                cts.Dispose();
-                cts = new CancellationTokenSource(TimeSpan.FromMinutes(5)); // 重新赋值给cts
-                goto retry;
+                if (streamAttempt == maxStreamAttempts)
+                {
+                    throw new TimeoutException("流式处理超时");
+                }
+
+                Console.WriteLine($"超时，正在重试 ({streamAttempt + 1}/{maxStreamAttempts})...");
+                await Task.Delay(TimeSpan.FromMilliseconds(2000 * streamAttempt), CancellationToken.None);
             }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"流式处理错误: {ex.Message}");
+                throw;
+            }
+        }
 
-            throw new TimeoutException("流式处理超时");
-        }
-        catch (Exception ex)
+        if (!contentAvailable)
         {
-            Console.WriteLine($"流式处理错误: {ex.Message}");
-            throw;
-        }
-        finally
-        {
-            cts?.Dispose(); // 确保资源被释放
+            await RefineResponse(history, chat, settings, analysisModel, catalogueTool, consecutiveEmptyResponses + 1);
+
+            if (string.IsNullOrWhiteSpace(catalogueTool.Content))
+            {
+                throw new InvalidOperationException("catalogueTool.Content is empty after all fallback attempts");
+            }
         }
 
         // Prefer tool-stored JSON when available
@@ -252,48 +290,39 @@ public static partial class GenerateThinkCatalogueService
             if (!DocumentOptions.RefineAndEnhanceQuality || attemptNumber >= 3) // 前几次尝试才进行质量增强
                 return ExtractAndParseJson(catalogueTool.Content);
 
-            await RefineResponse(history, chat, settings, analysisModel);
+            await RefineResponse(history, chat, settings, analysisModel, catalogueTool, consecutiveEmptyResponses);
 
             return ExtractAndParseJson(catalogueTool.Content);
         }
-        else
-        {
-            retry++;
-            if (retry > 3)
-            {
-                throw new Exception("AI生成目录的时候重复多次响应空内容");
-            }
 
-            goto retry;
-        }
+        throw new InvalidOperationException("catalogueTool.Content is empty after streaming attempts");
     }
 
     private static async Task RefineResponse(ChatHistory history, IChatCompletionService chat,
-        OpenAIPromptExecutionSettings settings, Kernel kernel)
+        OpenAIPromptExecutionSettings settings, Kernel kernel, CatalogueFunction catalogueTool,
+        int emptyResponseCount)
     {
         try
         {
-            // 根据尝试次数调整细化策略
-            const string refinementPrompt = """
-                                                Refine the stored documentation_structure JSON iteratively using tools only:
-                                                - Use Catalogue.Read to inspect the current JSON.
-                                                - Apply several Catalogue.Edit operations to:
-                                                  • add Level 2/3 subsections for core components, features, data models, integrations
-                                                  • normalize kebab-case titles and maintain 'getting-started' then 'deep-dive' ordering
-                                                  • enrich each section's 'prompt' with actionable guidance (scope, code areas, outputs)
-                                                - Prefer localized edits; only use Catalogue.Write for a complete rewrite if necessary.
-                                                - Never print JSON in chat; use tools exclusively.
-                                                - Start by editing some parts that need optimization through catalog.MultiEdit.
-                                            """;
+            var refinementPrompt = $"""
+                                    The documentation_structure JSON is still empty after {emptyResponseCount} attempts.
+                                    Provide a full replacement JSON with concise hierarchy. Requirements:
+                                    - Include at least 'getting-started' and 'deep-dive' top-level sections
+                                    - For each section, provide a Chinese name and an action-oriented prompt
+                                    - Keep structure shallow (max depth 3) to avoid bloating
+                                    Use only Catalogue.Write to produce the JSON.
+                                    """;
 
             history.AddUserMessage(refinementPrompt);
 
             await foreach (var _ in chat.GetStreamingChatMessageContentsAsync(history, settings, kernel))
             {
+                // 仅消费流式结果；CatalogueFunction 插件会在 Write 被调用时自行更新内容
             }
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"RefineResponse error: {ex.Message}");
         }
     }
 

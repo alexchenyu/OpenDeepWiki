@@ -3,14 +3,14 @@
     image: crpi-j9ha7sxwhatgtvj4.cn-shenzhen.personal.cr.aliyuncs.com/koala-ai/koala-wiki
     environment:
       - KOALAWIKI_REPOSITORIES=/repositories
-      - TASK_MAX_SIZE_PER_USER=5 # 每个用户AI处理文档生成的最大数量
+      - TASK_MAX_SIZE_PER_USER=3 # 增加到3个并发任务
       - REPAIR_MERMAID=1 # 是否进行Mermaid修复，1修复，其余不修复
-      - CHAT_MODEL=DeepSeek-V3 # 必须要支持function的模型
+      - CHAT_MODEL=GLM-4.6-FP8 # 必须要支持function的模型
       - ANALYSIS_MODEL= # 分析模型，用于生成仓库目录结构，这个很重要，模型越强，生成的目录结构越好，为空则使用ChatModel
                         # 分析模型建议使用GPT-4.1  , CHAT模型可以用其他模型生成文档,以节省 token 开销
-      - CHAT_API_KEY=sk-ovC9QiGmsjCIWwKOa07VqTd3YDe1gbEWfG8KbP #您的APIkey
+      - CHAT_API_KEY=eyJhIjoiYmI5ZW #您的APIkey
       - LANGUAGE= # 设置生成语言默认为“中文”, 英文可以填写 English 或 英文
-      - ENDPOINT=https://api.token-ai.cn/v1
+      - ENDPOINT=http://172.31.37.120:8000/v1
       - DB_TYPE=sqlite
       - DB_CONNECTION_STRING=Data Source=/data/KoalaWiki.db
       - UPDATE_INTERVAL=5 # 仓库增量更新间隔，单位天
@@ -19,9 +19,13 @@
       - ENABLE_CODED_DEPENDENCY_ANALYSIS=false # 是否启用代码依赖分析？这可能会对代码的质量产生影响。
       - ENABLE_WAREHOUSE_FUNCTION_PROMPT_TASK=false # 是否启用MCP Prompt生成
       - ENABLE_WAREHOUSE_DESCRIPTION_TASK=false # 是否启用仓库Description生成
+      - ENABLE_CODE_COMPRESSION=true # 启用代码压缩以减少token使用
+      - CATALOGUE_FORMAT=compact # 使用紧凑的目录格式
       - OTEL_SERVICE_NAME=koalawiki
       - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:18889
+      - READ_MAX_TOKENS=100000  # 还是用100K
+      - MAX_FILE_READ_COUNT=3  # 降低文件数量，减少累积内容
     ports:
         - "8080:8080"
     volumes:

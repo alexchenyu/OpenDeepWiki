@@ -44,6 +44,7 @@ export default defineConfig({
   },
   build: {
     outDir: '../src/KoalaWiki/wwwroot',
+    emptyOutDir: true,
     assetsDir: 'static',
     // 生成 source map（开发阶段可以设为 true）
     sourcemap: false,

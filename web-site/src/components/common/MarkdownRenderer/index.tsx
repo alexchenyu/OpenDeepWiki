@@ -829,11 +829,6 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
               {children}
             </ol>
           ),
-          li: ({ children, ...props }) => (
-            <li className="text-muted-foreground break-words" {...props}>
-              {children}
-            </li>
-          ),
           // 自定义段落
           p: ({ children, ...props }) => {
             // 处理段落中的脚注引用
