@@ -76,11 +76,19 @@ public class DocumentsService(IDocumentProcessingOrchestrator orchestrator)
             catalogue.Append($"{relativePath}\n");
         }
 
-        // 如果文件数量小于800
-        if (pathInfos.Count < 800)
+        // 如果文件数量小于500
+        if (pathInfos.Count < 500)
         {
             // 直接返回
             return catalogue.ToString();
+        }
+
+        // 如果超过500个文件，返回智能摘要（避免token超限）
+        // 注意：不再使用AI简化中间层，因为发送完整目录给AI本身就会超限
+        if (pathInfos.Count >= 500)
+        {
+            Log.Logger.Warning("仓库文件数量过多({Count})，返回目录摘要而非完整结构", pathInfos.Count);
+            return GenerateDirectorySummary(pathInfos, path);
         }
 
         // 如果不启用则直接返回
@@ -89,7 +97,7 @@ public class DocumentsService(IDocumentProcessingOrchestrator orchestrator)
             return catalogue.ToString();
         }
 
-        Log.Logger.Information("开始优化目录结构");
+        Log.Logger.Information("开始优化目录结构，当前文件数：{Count}", pathInfos.Count);
 
         var analysisModel = KernelFactory.GetKernel(OpenAIOptions.Endpoint,
             OpenAIOptions.ChatApiKey, path, OpenAIOptions.AnalysisModel);
@@ -167,6 +175,119 @@ public class DocumentsService(IDocumentProcessingOrchestrator orchestrator)
         }
 
         return catalogue.ToString();
+    }
+
+    /// <summary>
+    /// 为超大仓库生成智能目录摘要
+    /// </summary>
+    private static string GenerateDirectorySummary(List<PathInfo> pathInfos, string basePath)
+    {
+        var summary = new StringBuilder();
+        summary.AppendLine("# Repository Structure Summary (Large Repository)");
+        summary.AppendLine($"**Total Items: {pathInfos.Count}**");
+        summary.AppendLine();
+        summary.AppendLine("⚠️ This repository is too large to display full structure. Below is a condensed summary.");
+        summary.AppendLine("💡 Use 'read_file' tool to explore specific directories or files based on user questions.");
+        summary.AppendLine();
+        
+        // 按顶层目录分组统计
+        var topLevelGroups = pathInfos
+            .Select(p => {
+                var relativePath = p.Path.Replace(basePath, "").TrimStart(Path.DirectorySeparatorChar, '/');
+                var parts = relativePath.Split(new[] { Path.DirectorySeparatorChar, '/' }, StringSplitOptions.RemoveEmptyEntries);
+                return new { 
+                    TopLevel = parts.Length > 0 ? parts[0] : relativePath,
+                    IsTopLevel = parts.Length == 1,
+                    Extension = Path.GetExtension(p.Path),
+                    Type = p.Type,
+                    FullPath = relativePath
+                };
+            })
+            .Where(x => !x.TopLevel.StartsWith("."))
+            .GroupBy(x => x.TopLevel)
+            .OrderBy(g => g.Key); // 按字母顺序，不限制数量
+        
+        summary.AppendLine("## All Top-Level Directories & Files:");
+        summary.AppendLine("```");
+        foreach (var group in topLevelGroups)
+        {
+            var fileCount = group.Count(x => x.Type == "file");
+            var dirCount = group.Count(x => x.Type == "directory");
+            
+            // 统计主要文件类型
+            var extensions = group.Where(x => !string.IsNullOrEmpty(x.Extension))
+                                  .GroupBy(x => x.Extension)
+                                  .OrderByDescending(g => g.Count())
+                                  .Take(5)
+                                  .Select(g => $"{g.Key}:{g.Count()}");
+            
+            var isDirectory = group.Any(x => x.Type == "directory");
+            var marker = isDirectory ? "📁" : "📄";
+            var extInfo = extensions.Any() ? $" ({string.Join(", ", extensions)})" : "";
+            
+            summary.AppendLine($"{marker} {group.Key}/ - {fileCount} files, {dirCount} subdirs{extInfo}");
+        }
+        
+        summary.AppendLine("```");
+        summary.AppendLine();
+        
+        // 显示重要的配置文件和文档
+        var importantPatterns = new[] { 
+            "README", "LICENSE", "CONTRIBUTING", "CHANGELOG", "AUTHORS",
+            "package.json", "pom.xml", "build.gradle", "Cargo.toml", "go.mod",
+            "Makefile", "CMakeLists.txt", "setup.py", "requirements.txt", "pyproject.toml",
+            ".gitignore", "Dockerfile", "docker-compose", ".env"
+        };
+        
+        var importantFiles = pathInfos
+            .Where(p => {
+                var relativePath = p.Path.Replace(basePath, "").TrimStart(Path.DirectorySeparatorChar, '/');
+                var fileName = Path.GetFileName(relativePath);
+                return !relativePath.Contains(Path.DirectorySeparatorChar.ToString()) && 
+                       !relativePath.Contains("/") &&
+                       p.Type == "file" &&
+                       importantPatterns.Any(pattern => fileName.Contains(pattern, StringComparison.OrdinalIgnoreCase));
+            })
+            .Select(p => Path.GetFileName(p.Path.Replace(basePath, "").TrimStart(Path.DirectorySeparatorChar, '/')))
+            .OrderBy(f => f);
+        
+        if (importantFiles.Any())
+        {
+            summary.AppendLine("## 📋 Important Configuration & Documentation Files:");
+            summary.AppendLine("```");
+            foreach (var file in importantFiles)
+            {
+                summary.AppendLine($"  {file}");
+            }
+            summary.AppendLine("```");
+            summary.AppendLine();
+        }
+        
+        // 文件类型统计
+        var fileTypeStats = pathInfos
+            .Where(p => p.Type == "file" && !string.IsNullOrEmpty(Path.GetExtension(p.Path)))
+            .GroupBy(p => Path.GetExtension(p.Path))
+            .OrderByDescending(g => g.Count())
+            .Take(10)
+            .Select(g => $"{g.Key} ({g.Count()})");
+        
+        if (fileTypeStats.Any())
+        {
+            summary.AppendLine("## 📊 File Type Distribution (Top 10):");
+            summary.AppendLine($"```\n{string.Join(", ", fileTypeStats)}\n```");
+            summary.AppendLine();
+        }
+        
+        summary.AppendLine("---");
+        summary.AppendLine();
+        summary.AppendLine("## 🔍 How to Explore This Repository:");
+        summary.AppendLine("1. Read README files first to understand the project structure");
+        summary.AppendLine("2. Based on user questions, use `read_file` tool to explore relevant directories");
+        summary.AppendLine("3. For example: `read_file('src/README.md')` or `read_file('docs/')` to list directory contents");
+        summary.AppendLine("4. Analyze the file type distribution to understand the tech stack");
+        summary.AppendLine("5. Start with configuration files (Makefile, package.json, etc.) to understand build process");
+        
+        return summary.ToString();
     }
 
     public static async Task<string> GenerateReadMe(Warehouse warehouse, string path,

@@ -1,7 +1,7 @@
 # 检测是否支持 docker compose
 DOCKER_COMPOSE := $(shell if docker compose version >/dev/null 2>&1; then echo "docker compose"; else echo "docker-compose"; fi)
 
-.PHONY: all build build-backend build-frontend build-arm build-amd build-backend-arm build-backend-amd up down restart dev dev-backend logs clean help
+.PHONY: all build build-backend build-frontend build-arm build-amd build-backend-arm build-backend-amd up down restart dev dev-backend dev-mem0 up-mem0 down-mem0 logs clean help
 
 all: build up
 
@@ -53,6 +53,18 @@ dev:
 dev-backend:
 	$(DOCKER_COMPOSE) up koalawiki
 
+# 启动mem0开发环境（包含向量数据库支持）
+dev-mem0:
+	$(DOCKER_COMPOSE) -f docker-compose-mem0.yml up
+
+# 启动mem0服务（后台模式）
+up-mem0:
+	$(DOCKER_COMPOSE) -f docker-compose-mem0.yml up -d
+
+# 停止mem0服务
+down-mem0:
+	$(DOCKER_COMPOSE) -f docker-compose-mem0.yml down
+
 # 查看服务日志
 logs:
 	$(DOCKER_COMPOSE) logs -f
@@ -76,6 +88,9 @@ help:
 	@echo "  make restart			  - 重启所有服务"
 	@echo "  make dev				  - 启动开发环境（非后台模式，可查看日志）"
 	@echo "  make dev-backend		  - 只启动后端开发环境"
+	@echo "  make dev-mem0			 - 启动mem0开发环境（支持向量数据库RAG）"
+	@echo "  make up-mem0			  - 启动mem0服务（后台模式）"
+	@echo "  make down-mem0			- 停止mem0服务"
 	@echo "  make logs				 - 查看服务日志"
 	@echo "  make clean				- 清理所有Docker资源（慎用）"
 	@echo "  make help				 - 显示此帮助信息"

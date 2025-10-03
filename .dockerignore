@@ -23,3 +23,9 @@
 **/values.dev.yaml
 LICENSE
 README.md
+# 数据目录 - 避免权限问题
+data/
+postgres_db/
+neo4j_data/
+history/
+repositories/

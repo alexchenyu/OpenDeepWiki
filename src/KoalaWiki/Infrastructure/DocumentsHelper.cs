@@ -127,6 +127,7 @@ public class DocumentsHelper
             "deepseek-chat" => 8192,
             "DeepSeek-V3" => 16384,
             "QwQ-32B" => 8192,
+            "GLM-4.6-FP8" => 100000,  // 为输入tokens和系统提示预留空间（200K总容量）
             "gpt-4.1-mini" => 32768,
             "gpt-4.1" => 32768,
             "gpt-4o" => 16384,

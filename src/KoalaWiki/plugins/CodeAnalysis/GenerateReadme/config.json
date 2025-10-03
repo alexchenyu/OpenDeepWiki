@@ -11,6 +11,10 @@
       "max_tokens": 16384,
       "temperature": 0.5
     },
+    "GLM-4.6-FP8": {
+      "max_tokens": 131072,
+      "temperature": 0.5
+    },
     "gpt-4.1-mini": {
       "max_tokens": 32768,
       "temperature": 0.5

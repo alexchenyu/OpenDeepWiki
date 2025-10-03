@@ -7,7 +7,7 @@ namespace KoalaWiki.Services;
 
 /// <summary>
 /// 动态配置服务 - 负责管理系统设置
-/// 配置优先级：数据库 > 环境变量 > 默认值
+/// 配置优先级：环境变量 > 数据库 > 默认值
 /// </summary>
 public class DynamicConfigService
 {
@@ -151,12 +151,13 @@ public class DynamicConfigService
                 .AsNoTracking()
                 .FirstOrDefaultAsync(x => x.Key == key && x.IsEnabled);
 
-            var value = setting?.Value;
-
-            // 如果数据库中没有值，尝试从环境变量获取
+            // 优先使用环境变量（如果存在）
+            var value = GetEnvironmentValue(key, setting?.Group);
+            
+            // 如果环境变量没有值，使用数据库中的值
             if (string.IsNullOrEmpty(value))
             {
-                value = GetEnvironmentValue(key, setting?.Group);
+                value = setting?.Value;
             }
 
             // 如果仍然没有值，使用默认值

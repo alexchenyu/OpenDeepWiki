@@ -24,8 +24,8 @@
       - OTEL_SERVICE_NAME=koalawiki
       - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:18889
-      - READ_MAX_TOKENS=100000  # 还是用100K
-      - MAX_FILE_READ_COUNT=3  # 降低文件数量，减少累积内容
+      - READ_MAX_TOKENS=30000  # 为超大仓库目录结构预留空间（目录结构占大头）
+      - MAX_FILE_READ_COUNT=3  # 最多3个文件
     ports:
         - "8080:8080"
     volumes:

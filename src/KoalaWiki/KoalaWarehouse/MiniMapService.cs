@@ -20,13 +20,16 @@ public static class MiniMapService
     public static async Task<MiniMapResult> GenerateMiniMap(string catalogue,
         Warehouse warehouse, string path)
     {
+        // 使用AnalysisModel，如果为空则使用ChatModel
+        string modelToUse = string.IsNullOrEmpty(OpenAIOptions.AnalysisModel) ? OpenAIOptions.ChatModel : OpenAIOptions.AnalysisModel;
+        
         string prompt = await PromptContext.Warehouse(nameof(PromptConstant.Warehouse.GenerateMindMap),
             new KernelArguments()
             {
                 ["code_files"] = catalogue,
                 ["repository_url"] = warehouse.Address.Replace(".git", ""),
                 ["branch_name"] = warehouse.Branch
-            }, OpenAIOptions.AnalysisModel);
+            }, modelToUse);
 
         var miniMap = new StringBuilder();
 
@@ -37,7 +40,7 @@ public static class MiniMapService
         history.AddUserMessage(prompt);
 
         var kernel = KernelFactory.GetKernel(OpenAIOptions.Endpoint, OpenAIOptions.ChatApiKey, path,
-            OpenAIOptions.ChatModel, false);
+            modelToUse, false);
 
         int retry = 1;
         retry:
@@ -46,7 +49,7 @@ public static class MiniMapService
                            .GetStreamingChatMessageContentsAsync(history, new OpenAIPromptExecutionSettings()
                            {
                                ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
-                               MaxTokens = DocumentsHelper.GetMaxTokens(OpenAIOptions.ChatModel)
+                               MaxTokens = DocumentsHelper.GetMaxTokens(modelToUse)
                            }, kernel))
         {
             if (!string.IsNullOrEmpty(item.Content))
