@@ -13,9 +13,9 @@
       - CHAT_MODEL=GLM-4.6-FP8 # 必须要支持function的模型
       - ANALYSIS_MODEL=GLM-4.6-FP8 # 分析模型，用于生成仓库目录结构，这个很重要，模型越强，生成的目录结构越好，为空则使用ChatModel
       # 分析模型建议使用GPT-4.1  , CHAT模型可以用其他模型生成文档,以节省 token 开销
-      - CHAT_API_KEY=eyJhIjoiYmI5ZW #您的APIkey
+      - CHAT_API_KEY=sk-ALZzlNLLC1mvBRnuLfv82A #您的APIkey
       - LANGUAGE= # 设置生成语言默认为"中文", 英文可以填写 English 或 英文
-      - ENDPOINT=http://172.31.37.120:8000/v1
+      - ENDPOINT=http://us-agent.supermicro.com:4500/v1
       - DB_TYPE=postgres
       - DB_CONNECTION_STRING=Host=postgres;Port=5432;Database=KoalaWiki;Username=postgres;Password=postgres
       - UPDATE_INTERVAL=5 # 仓库增量更新间隔，单位天
@@ -42,9 +42,9 @@
 
   mem0:
     container_name: mem0
-    image: registry.cn-shenzhen.aliyuncs.com/tokengo/mem0
+    # image: registry.cn-shenzhen.aliyuncs.com/tokengo/mem0  # 使用本地构建
     build:
-      context: ./server  # Set context to parent directory
+      context: ./server
       dockerfile: Dockerfile
     networks:
       - koala_network
@@ -60,18 +60,13 @@
       - PYTHONDONTWRITEBYTECODE=1  # Prevents Python from writing .pyc files
       - PYTHONUNBUFFERED=1  # Ensures Python output is sent straight to terminal
       - API_KEY=koala-ai
-      # 标准 OpenAI 配置（默认用于 embedding）
-      - OPENAI_API_KEY=ASdddSDSAFA # Embedding服务API key
-      - OPENAI_BASE_URL=http://172.31.36.205:8000/v1 # Embedding服务地址
-      # LLM 配置（用于生成记忆）
-      - LLM_PROVIDER=openai
-      - LLM_API_KEY=eyJhIjoiYmI5ZW
-      - LLM_BASE_URL=http://172.31.37.120:8000/v1
+      # 通过 litellm 统一访问所有模型
+      - OPENAI_API_KEY=sk-ALZzlNLLC1mvBRnuLfv82A
+      - OPENAI_BASE_URL=http://us-agent.supermicro.com:4500/v1
       - OPENAI_CHAT_MODEL=GLM-4.6-FP8
-      - LLM_MAX_TOKENS=180000 # 限制输入token数量，留出空间给生成
-      # Embedder 配置
-      - OPENAI_EMBEDDING_MODEL=nvidia/NV-Embed-v2
-      - EMBEDDING_MODEL_DIMS=4096 # nvidia/NV-Embed-v2的维度是4096
+      - OPENAI_EMBEDDING_MODEL=nvidia_embed
+      # Graph Store 配置（完整功能启用！）
+      - GRAPH_STORE_ENABLED=true
       # 数据库配置
       - NEO4J_URI=bolt://neo4j:7687
       - NEO4J_USERNAME=neo4j

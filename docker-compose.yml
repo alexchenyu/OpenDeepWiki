@@ -8,9 +8,9 @@
       - CHAT_MODEL=GLM-4.6-FP8 # 必须要支持function的模型
       - ANALYSIS_MODEL= # 分析模型，用于生成仓库目录结构，这个很重要，模型越强，生成的目录结构越好，为空则使用ChatModel
                         # 分析模型建议使用GPT-4.1  , CHAT模型可以用其他模型生成文档,以节省 token 开销
-      - CHAT_API_KEY=eyJhIjoiYmI5ZW #您的APIkey
+      - CHAT_API_KEY=sk-ALZzlNLLC1mvBRnuLfv82A #您的APIkey
       - LANGUAGE= # 设置生成语言默认为“中文”, 英文可以填写 English 或 英文
-      - ENDPOINT=http://172.31.37.120:8000/v1
+      - ENDPOINT=http://us-agent.supermicro.com:4500/v1
       - DB_TYPE=sqlite
       - DB_CONNECTION_STRING=Data Source=/data/KoalaWiki.db
       - UPDATE_INTERVAL=5 # 仓库增量更新间隔，单位天
