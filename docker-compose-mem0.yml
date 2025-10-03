@@ -68,6 +68,7 @@
       - LLM_API_KEY=eyJhIjoiYmI5ZW
       - LLM_BASE_URL=http://172.31.37.120:8000/v1
       - OPENAI_CHAT_MODEL=GLM-4.6-FP8
+      - LLM_MAX_TOKENS=180000 # 限制输入token数量，留出空间给生成
       # Embedder 配置
       - OPENAI_EMBEDDING_MODEL=nvidia/NV-Embed-v2
       - EMBEDDING_MODEL_DIMS=4096 # nvidia/NV-Embed-v2的维度是4096

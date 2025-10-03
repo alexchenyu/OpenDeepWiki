@@ -1,6 +1,7 @@
 ﻿using System.Net.Http.Headers;
 using KoalaWiki.Core.Extensions;
 using KoalaWiki.Domains.Warehouse;
+using KoalaWiki.Infrastructure;
 using KoalaWiki.Prompts;
 using Mem0.NET;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +10,50 @@ namespace KoalaWiki.Mem0;
 
 public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : BackgroundService
 {
+    // Token限制：为系统提示和输出预留空间
+    private const int SystemPromptReservedTokens = 2000;
+    private const int OutputReservedTokens = 4000;
+    private const double CharsPerToken = 3.5; // 平均每个token约3.5个字符
+    
+    /// <summary>
+    /// 估算文本的token数量
+    /// </summary>
+    private static int EstimateTokens(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return 0;
+        return (int)(text.Length / CharsPerToken);
+    }
+    
+    /// <summary>
+    /// 检查内容是否超过模型token限制
+    /// </summary>
+    private bool IsContentTooLong(string content, out int estimatedTokens)
+    {
+        estimatedTokens = EstimateTokens(content);
+        var maxTokens = DocumentsHelper.GetMaxTokens(OpenAIOptions.ChatModel);
+        
+        if (maxTokens == null)
+        {
+            // 如果没有配置最大token，使用保守值
+            maxTokens = 32000;
+        }
+        
+        var allowedTokens = maxTokens.Value - SystemPromptReservedTokens - OutputReservedTokens;
+        return estimatedTokens > allowedTokens;
+    }
+    
+    /// <summary>
+    /// 截断内容到允许的token数量
+    /// </summary>
+    private string TruncateContent(string content, int maxTokens)
+    {
+        var allowedChars = (int)(maxTokens * CharsPerToken);
+        if (content.Length <= allowedChars)
+            return content;
+            
+        return content.Substring(0, allowedChars) + "\n... (内容已截断)";
+    }
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await Task.Delay(100, stoppingToken);
@@ -83,6 +128,19 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
                         {
                             logger.LogWarning("目录 {Catalog} 内容为空，跳过", catalog);
                             return;
+                        }
+
+                        // 检查内容长度
+                        if (IsContentTooLong(content.Content, out var estimatedTokens))
+                        {
+                            var maxTokens = DocumentsHelper.GetMaxTokens(OpenAIOptions.ChatModel) ?? 32000;
+                            var allowedTokens = maxTokens - SystemPromptReservedTokens - OutputReservedTokens;
+                            
+                            logger.LogWarning(
+                                "目录 {Catalog} 内容过长 (约 {EstimatedTokens} tokens，限制 {MaxTokens} tokens)，将截断内容",
+                                catalog.Name, estimatedTokens, allowedTokens);
+                            
+                            content.Content = TruncateContent(content.Content, allowedTokens);
                         }
 
                         // 获取依赖文件
@@ -168,6 +226,19 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
                     {
                         logger.LogWarning("文件 {File} 内容为空，跳过", file.Path);
                         return;
+                    }
+
+                    // 检查内容长度
+                    if (IsContentTooLong(content, out var estimatedTokens))
+                    {
+                        var maxTokens = DocumentsHelper.GetMaxTokens(OpenAIOptions.ChatModel) ?? 32000;
+                        var allowedTokens = maxTokens - SystemPromptReservedTokens - OutputReservedTokens;
+                        
+                        logger.LogWarning(
+                            "文件 {File} 内容过长 (约 {EstimatedTokens} tokens，限制 {MaxTokens} tokens)，将截断内容",
+                            file.Name, estimatedTokens, allowedTokens);
+                        
+                        content = TruncateContent(content, allowedTokens);
                     }
 
                     // 处理文件内容
