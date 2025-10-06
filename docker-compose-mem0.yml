@@ -7,6 +7,7 @@
       postgres:
         condition: service_healthy
     environment:
+      - TZ=America/Los_Angeles
       - KOALAWIKI_REPOSITORIES=/repositories
       - TASK_MAX_SIZE_PER_USER=5 # 每个用户AI处理文档生成的最大数量
       - REPAIR_MERMAID=1 # 是否进行Mermaid修复，1修复，其余不修复
@@ -57,6 +58,7 @@
         condition: service_healthy
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload  # Enable auto-reload
     environment:
+      - TZ=America/Los_Angeles
       - PYTHONDONTWRITEBYTECODE=1  # Prevents Python from writing .pyc files
       - PYTHONUNBUFFERED=1  # Ensures Python output is sent straight to terminal
       - API_KEY=koala-ai
@@ -86,6 +88,7 @@
     networks:
       - koala_network
     environment:
+      - TZ=America/Los_Angeles
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=KoalaWiki
@@ -114,6 +117,7 @@
     volumes:
       - ./neo4j_data:/data
     environment:
+      - TZ=America/Los_Angeles
       - NEO4J_AUTH=neo4j/mem0graph
       - NEO4J_PLUGINS=["apoc"]  # Add this line to install APOC
       - NEO4J_apoc_export_file_enabled=true
@@ -127,7 +131,7 @@
     ports:
       - "18888:18888"
     environment:
-      - TZ=Asia/Shanghai
+      - TZ=America/Los_Angeles
       - Dashboard:ApplicationName=Aspire
 networks:
   koala_network:
