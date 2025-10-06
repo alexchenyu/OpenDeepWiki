@@ -60,11 +60,12 @@
       - PYTHONDONTWRITEBYTECODE=1  # Prevents Python from writing .pyc files
       - PYTHONUNBUFFERED=1  # Ensures Python output is sent straight to terminal
       - API_KEY=koala-ai
-      # 通过 litellm 统一访问所有模型
+      # 通过 litellm 统一访问所有模型（litellm 需要配置 drop_params=true）
       - OPENAI_API_KEY=sk-ALZzlNLLC1mvBRnuLfv82A
       - OPENAI_BASE_URL=http://us-agent.supermicro.com:4500/v1
       - OPENAI_CHAT_MODEL=GLM-4.6-FP8
       - OPENAI_EMBEDDING_MODEL=nvidia_embed
+      - EMBEDDING_MODEL_DIMS=4096
       # Graph Store 配置（完整功能启用！）
       - GRAPH_STORE_ENABLED=true
       # 数据库配置

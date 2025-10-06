@@ -10,10 +10,14 @@ namespace KoalaWiki.Mem0;
 
 public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : BackgroundService
 {
-    // Token限制：为系统提示和输出预留空间
-    private const int SystemPromptReservedTokens = 2000;
-    private const int OutputReservedTokens = 4000;
+    // Token限制：为系统提示、格式化和输出预留空间
+    private const int SystemPromptReservedTokens = 5000; // system prompt 通常较长
+    private const int FormattingReservedTokens = 1000;   // 格式化标签和标题
+    private const int OutputReservedTokens = 16384;      // LLM 输出空间（max_tokens）
     private const double CharsPerToken = 3.5; // 平均每个token约3.5个字符
+    
+    // GLM-4.6-FP8 的实际 context window
+    private const int GLM46ContextWindow = 202752;
     
     /// <summary>
     /// 估算文本的token数量
@@ -31,15 +35,13 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
     private bool IsContentTooLong(string content, out int estimatedTokens)
     {
         estimatedTokens = EstimateTokens(content);
-        var maxTokens = DocumentsHelper.GetMaxTokens(OpenAIOptions.ChatModel);
         
-        if (maxTokens == null)
-        {
-            // 如果没有配置最大token，使用保守值
-            maxTokens = 32000;
-        }
+        // 对于 mem0，我们需要计算输入内容的最大允许长度
+        // 使用实际的 context window 而不是 max_tokens
+        int contextWindow = GLM46ContextWindow;
         
-        var allowedTokens = maxTokens.Value - SystemPromptReservedTokens - OutputReservedTokens;
+        // 计算实际可用的token数量，扣除所有预留空间
+        var allowedTokens = contextWindow - SystemPromptReservedTokens - FormattingReservedTokens - OutputReservedTokens;
         return estimatedTokens > allowedTokens;
     }
     
@@ -133,8 +135,7 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
                         // 检查内容长度
                         if (IsContentTooLong(content.Content, out var estimatedTokens))
                         {
-                            var maxTokens = DocumentsHelper.GetMaxTokens(OpenAIOptions.ChatModel) ?? 32000;
-                            var allowedTokens = maxTokens - SystemPromptReservedTokens - OutputReservedTokens;
+                            var allowedTokens = GLM46ContextWindow - SystemPromptReservedTokens - FormattingReservedTokens - OutputReservedTokens;
                             
                             logger.LogWarning(
                                 "目录 {Catalog} 内容过长 (约 {EstimatedTokens} tokens，限制 {MaxTokens} tokens)，将截断内容",
@@ -231,8 +232,7 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
                     // 检查内容长度
                     if (IsContentTooLong(content, out var estimatedTokens))
                     {
-                        var maxTokens = DocumentsHelper.GetMaxTokens(OpenAIOptions.ChatModel) ?? 32000;
-                        var allowedTokens = maxTokens - SystemPromptReservedTokens - OutputReservedTokens;
+                        var allowedTokens = GLM46ContextWindow - SystemPromptReservedTokens - FormattingReservedTokens - OutputReservedTokens;
                         
                         logger.LogWarning(
                             "文件 {File} 内容过长 (约 {EstimatedTokens} tokens，限制 {MaxTokens} tokens)，将截断内容",

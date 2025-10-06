@@ -42,10 +42,9 @@ HISTORY_DB_PATH = os.environ.get("HISTORY_DB_PATH", "/app/history/history.db")
 EMBEDDER_API_KEY = os.environ.get("EMBEDDER_API_KEY", OPENAI_API_KEY)
 EMBEDDER_BASE_URL = os.environ.get("EMBEDDER_BASE_URL", OPENAI_BASE_URL)
 
-OPENAI_CHAT_MODEL = os.environ.get("OPENAI_CHAT_MODEL", "gpt-4o")
+OPENAI_CHAT_MODEL = os.environ.get("OPENAI_CHAT_MODEL", "GLM-4.6-FP8")
 OPENAI_EMBEDDING_MODEL = os.environ.get("OPENAI_EMBEDDING_MODEL", "nvidia_embed")
-# nvidia/NV-Embed-v2 的维度是 4096，只用于 pgvector 配置，不传递给 embedder
-EMBEDDING_MODEL_DIMS = 4096
+EMBEDDING_MODEL_DIMS = int(os.environ.get("EMBEDDING_MODEL_DIMS", "4096"))
 
 # 是否启用 Graph Store
 GRAPH_STORE_ENABLED = os.environ.get("GRAPH_STORE_ENABLED", "true").lower() == "true"
@@ -77,7 +76,7 @@ DEFAULT_CONFIG = {
             "user": POSTGRES_USER,
             "password": POSTGRES_PASSWORD,
             "collection_name": POSTGRES_COLLECTION_NAME,
-            "embedding_model_dims": EMBEDDING_MODEL_DIMS,
+            "embedding_model_dims": EMBEDDING_MODEL_DIMS,  # nvidia/NV-Embed-v2 的维度
             "hnsw": False,  # 禁用 HNSW 索引（不支持 > 2000 维）
             "diskann": False,  # 禁用 DiskANN 索引
         },
