@@ -10,6 +10,7 @@ import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
+import { useTheme } from '@/components/theme-provider'
 import 'mind-elixir/style'
 
 interface MiniMapResult {
@@ -99,6 +100,7 @@ export default function MindMapPage({ className }: { className?: string }) {
   const { owner, name } = useParams<{ owner: string; name: string }>()
   const [searchParams] = useSearchParams()
   const { t, i18n } = useTranslation()
+  const { theme } = useTheme()
   const { selectedBranch } = useRepositoryDetailStore()
   const [loading, setLoading] = useState(true)
   const [mindMapData, setMindMapData] = useState<MiniMapResult | null>(null)
@@ -109,6 +111,9 @@ export default function MindMapPage({ className }: { className?: string }) {
   const panCleanupRef = useRef<(() => void) | null>(null)
 
   const branch = searchParams.get('branch') || selectedBranch || 'main'
+
+  // 检测是否为暗色主题
+  const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
 
   const fetchMindMap = async () => {
     if (!owner || !name) return
@@ -173,17 +178,28 @@ export default function MindMapPage({ className }: { className?: string }) {
       primaryNodeHorizontalGap: 65,
       primaryNodeVerticalGap: 25,
       theme: {
-        name: 'Minimal',
-        palette: [
+        name: isDark ? 'Dark' : 'Light',
+        palette: isDark ? [
+          '#e2e8f0', '#cbd5e1', '#94a3b8', '#64748b',
+          '#475569', '#334155', '#1e293b', '#0f172a',
+          '#0ea5e9', '#06b6d4'
+        ] : [
           '#0f172a', '#475569', '#64748b', '#94a3b8',
           '#cbd5e1', '#e2e8f0', '#f1f5f9', '#f8fafc',
           '#0ea5e9', '#06b6d4'
         ],
-        cssVar: {
+        cssVar: isDark ? {
+          '--main-color': '#e2e8f0',
+          '--main-bgcolor': '#1e293b',
+          '--color': '#cbd5e1',
+          '--bgcolor': '#0f172a',
+          '--panel-color': '30, 41, 59',
+          '--panel-bgcolor': '15, 23, 42',
+        } : {
           '--main-color': '#0f172a',
-          '--main-bgcolor': '#2f2020',
+          '--main-bgcolor': '#f8fafc',
           '--color': '#1e293b',
-          '--bgcolor': '#f8fafc',
+          '--bgcolor': '#ffffff',
           '--panel-color': '255, 255, 255',
           '--panel-bgcolor': '248, 250, 252',
         },
@@ -354,6 +370,14 @@ export default function MindMapPage({ className }: { className?: string }) {
     fetchMindMap()
   }, [owner, name, branch, i18n.language])
 
+  // 主题变化时重新初始化mindmap
+  useEffect(() => {
+    if (mindMapData) {
+      const mindData = convertToMindElixirData(mindMapData)
+      setTimeout(() => initMindElixir(mindData), 100)
+    }
+  }, [isDark])
+
   useEffect(() => {
     return () => {
       if (panCleanupRef.current) {
@@ -461,7 +485,9 @@ export default function MindMapPage({ className }: { className?: string }) {
             ref={containerRef}
             className={`
               w-full h-full relative select-none
-              bg-gradient-to-br from-slate-50 to-slate-200
+              ${isDark
+                ? 'bg-gradient-to-br from-slate-900 to-slate-800'
+                : 'bg-gradient-to-br from-slate-50 to-slate-200'}
               ${isFullscreen ? 'rounded-none' : 'rounded-lg'}
             `}
             style={{
@@ -531,41 +557,46 @@ export default function MindMapPage({ className }: { className?: string }) {
         }
 
         .mind-elixir .line {
-          stroke: #475569;
+          stroke: ${isDark ? '#64748b' : '#475569'};
           stroke-width: 1.5;
         }
 
         .mind-elixir .node {
           border-radius: 8px;
-          border: 1px solid #e2e8f0;
-          background: #ffffff;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+          border: 1px solid ${isDark ? '#475569' : '#e2e8f0'};
+          background: ${isDark ? '#1e293b' : '#ffffff'};
+          color: ${isDark ? '#e2e8f0' : '#1e293b'};
+          box-shadow: 0 1px 3px ${isDark ? 'rgba(0, 0, 0, 0.4)' : 'rgba(0, 0, 0, 0.1)'};
           touch-action: none !important;
           font-family: inherit;
         }
 
         .mind-elixir .root {
-          background: linear-gradient(135deg, #0f172a, #1e293b) !important;
+          background: ${isDark
+            ? 'linear-gradient(135deg, #0ea5e9, #06b6d4)'
+            : 'linear-gradient(135deg, #0f172a, #1e293b)'} !important;
           color: white !important;
           font-weight: 600;
           font-size: 16px;
           border: none !important;
-          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+          box-shadow: 0 4px 6px ${isDark ? 'rgba(0, 0, 0, 0.5)' : 'rgba(0, 0, 0, 0.1)'} !important;
         }
 
         .mind-elixir .primary {
-          background: #f8fafc !important;
-          border-color: #cbd5e1 !important;
-          color: #334155 !important;
+          background: ${isDark ? '#334155' : '#f8fafc'} !important;
+          border-color: ${isDark ? '#64748b' : '#cbd5e1'} !important;
+          color: ${isDark ? '#e2e8f0' : '#334155'} !important;
           font-weight: 500;
         }
 
         .mind-elixir .context-menu {
           border-radius: 8px;
-          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-          border: 1px solid #e2e8f0;
+          box-shadow: 0 4px 6px -1px ${isDark ? 'rgba(0, 0, 0, 0.5)' : 'rgba(0, 0, 0, 0.1)'},
+                      0 2px 4px -1px ${isDark ? 'rgba(0, 0, 0, 0.3)' : 'rgba(0, 0, 0, 0.06)'};
+          border: 1px solid ${isDark ? '#475569' : '#e2e8f0'};
           z-index: 9999 !important;
-          background: white;
+          background: ${isDark ? '#1e293b' : 'white'};
+          color: ${isDark ? '#e2e8f0' : '#1e293b'};
         }
 
         html {
