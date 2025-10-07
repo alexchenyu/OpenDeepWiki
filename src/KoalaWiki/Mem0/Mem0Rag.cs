@@ -99,18 +99,6 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
                     }
                 });
 
-            // 清理该warehouse的历史记忆，避免上下文累积
-            try
-            {
-                logger.LogInformation("清理 warehouse {WarehouseId} 的历史mem0记忆", warehouse.Id);
-                await client.DeleteAllAsync(warehouse.Id, cancellationToken: stoppingToken);
-                logger.LogInformation("成功清理 warehouse {WarehouseId} 的历史记忆", warehouse.Id);
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "清理 warehouse {WarehouseId} 历史记忆失败，继续处理", warehouse.Id);
-            }
-
             var catalogs = await dbContext.DocumentCatalogs
                 .Where(x => x.DucumentId == documents.Id && x.IsCompleted == true && x.IsDeleted == false)
                 .ToListAsync(stoppingToken);
@@ -120,6 +108,13 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
                 CancellationToken = stoppingToken,
                 MaxDegreeOfParallelism = 3 // 可根据需要调整并发数
             };
+
+            logger.LogInformation("开始处理 warehouse {WarehouseId} ({WarehouseName})，共 {CatalogCount} 个目录",
+                warehouse.Id, warehouse.Name, catalogs.Count);
+
+            int catalogProcessed = 0;
+            int catalogSuccess = 0;
+            int catalogFailed = 0;
 
             await Parallel.ForEachAsync(catalogs, parallelOptions, async (catalog, ct) =>
             {
@@ -193,6 +188,16 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
                                 { "reference", dependentFiles }
                             },
                             memoryType: "procedural_memory", cancellationToken: ct);
+
+                        Interlocked.Increment(ref catalogSuccess);
+                        var processed = Interlocked.Increment(ref catalogProcessed);
+
+                        if (processed % 10 == 0)
+                        {
+                            logger.LogInformation("目录处理进度: {Processed}/{Total} (成功: {Success}, 失败: {Failed})",
+                                processed, catalogs.Count, catalogSuccess, catalogFailed);
+                        }
+
                         break; // 成功则跳出重试循环
                     }
                     catch (Exception ex)
@@ -206,6 +211,9 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
 
                         if (retryCount >= maxRetries)
                         {
+                            Interlocked.Increment(ref catalogFailed);
+                            Interlocked.Increment(ref catalogProcessed);
+
                             logger.LogError(ex,
                                 "处理目录 {Catalog} 时发生错误，已重试 {RetryCount} 次。错误类型: {ErrorType}。详细信息: {Message}",
                                 catalog.Name, retryCount,
@@ -223,12 +231,20 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
                 }
             });
 
+            logger.LogInformation("目录处理完成: 成功 {Success}/{Total}, 失败 {Failed}",
+                catalogSuccess, catalogs.Count, catalogFailed);
+
             var fileParallelOptions = new ParallelOptions
             {
                 CancellationToken = stoppingToken,
                 MaxDegreeOfParallelism = 3 // 可根据需要调整并发数
             };
 
+            logger.LogInformation("开始处理 warehouse {WarehouseId} 的代码文件，共 {FileCount} 个文件",
+                warehouse.Id, files.Count);
+
+            int fileProcessed = 0;
+            int fileSuccess = 0;
             int fileFailureCount = 0;
             const int fileFailureThreshold = 5; // 熔断阈值
             bool circuitBroken = false;
@@ -284,10 +300,20 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
                         { "type", "code" },
                         { "documentId", documents.Id },
                     }, cancellationToken: ct);
+
+                    Interlocked.Increment(ref fileSuccess);
+                    var processed = Interlocked.Increment(ref fileProcessed);
+
+                    if (processed % 50 == 0)
+                    {
+                        logger.LogInformation("文件处理进度: {Processed}/{Total} (成功: {Success}, 失败: {Failed})",
+                            processed, files.Count, fileSuccess, fileFailureCount);
+                    }
                 }
                 catch (Exception ex)
                 {
                     Interlocked.Increment(ref fileFailureCount);
+                    Interlocked.Increment(ref fileProcessed);
 
                     // 检查是否是token超限错误
                     var isTokenError = ex.Message.Contains("maximum context length") ||
@@ -308,9 +334,27 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
                 }
             });
 
+            logger.LogInformation("文件处理完成: 成功 {Success}/{Total}, 失败 {Failed}",
+                fileSuccess, files.Count, fileFailureCount);
+
+            // 完成后清理该warehouse的历史，避免下次处理时累积
+            try
+            {
+                logger.LogInformation("清理 warehouse {WarehouseId} 的历史mem0记忆", warehouse.Id);
+                await client.DeleteAllAsync(warehouse.Id, cancellationToken: stoppingToken);
+                logger.LogInformation("成功清理 warehouse {WarehouseId} 的历史记忆", warehouse.Id);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "清理 warehouse {WarehouseId} 历史记忆失败", warehouse.Id);
+            }
+
             await dbContext.Warehouses
                 .Where(x => x.Id == warehouse.Id)
                 .ExecuteUpdateAsync(x => x.SetProperty(a => a.IsEmbedded, true), stoppingToken);
+
+            logger.LogInformation("完成 warehouse {WarehouseId} ({WarehouseName}) 的处理",
+                warehouse.Id, warehouse.Name);
         }
     }
 }

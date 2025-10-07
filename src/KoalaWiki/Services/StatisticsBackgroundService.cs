@@ -46,12 +46,25 @@ public class StatisticsBackgroundService : BackgroundService
                 // 执行统计任务
                 await ExecuteStatisticsTask();
             }
+            catch (OperationCanceledException)
+            {
+                // 应用关闭时的正常取消，不记录为错误
+                break;
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "统计后台服务发生错误");
-                
+
                 // 发生错误时等待1小时后重试
-                await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
+                try
+                {
+                    await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    // 等待期间应用关闭，正常退出
+                    break;
+                }
             }
         }
 

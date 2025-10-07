@@ -1,6 +1,12 @@
 ﻿services:
   koalawiki:
     image: crpi-j9ha7sxwhatgtvj4.cn-shenzhen.personal.cr.aliyuncs.com/koala-ai/koala-wiki
+    deploy:
+      resources:
+        limits:
+          memory: 32G  # 限制最大内存使用，防止OOM
+        reservations:
+          memory: 4G  # 预留最小内存
     networks:
       - koala_network
     depends_on:
@@ -49,6 +55,12 @@
     build:
       context: ./server
       dockerfile: Dockerfile
+    deploy:
+      resources:
+        limits:
+          memory: 16G  # 限制mem0内存使用
+        reservations:
+          memory: 2G
     networks:
       - koala_network
     volumes:
