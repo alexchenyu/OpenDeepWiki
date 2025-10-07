@@ -11,13 +11,18 @@ namespace KoalaWiki.Mem0;
 public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : BackgroundService
 {
     // Token限制：为系统提示、格式化和输出预留空间
-    private const int SystemPromptReservedTokens = 5000; // system prompt 通常较长
-    private const int FormattingReservedTokens = 1000;   // 格式化标签和标题
+    private const int SystemPromptReservedTokens = 8000; // system prompt 通常较长，增加预留
+    private const int FormattingReservedTokens = 2000;   // 格式化标签和标题
     private const int OutputReservedTokens = 16384;      // LLM 输出空间（max_tokens）
-    private const double CharsPerToken = 3.5; // 平均每个token约3.5个字符
-    
+    private const int HistoryReservedTokens = 50000;     // 历史对话预留空间（mem0会累积历史）
+    private const double CharsPerToken = 2.5; // 更保守的估算（中文+代码混合）
+
     // GLM-4.6-FP8 的实际 context window
     private const int GLM46ContextWindow = 202752;
+
+    // 实际可用的最大token数量（扣除所有预留空间）
+    private static int MaxAllowedInputTokens =>
+        GLM46ContextWindow - SystemPromptReservedTokens - FormattingReservedTokens - OutputReservedTokens - HistoryReservedTokens;
     
     /// <summary>
     /// 估算文本的token数量
@@ -35,14 +40,7 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
     private bool IsContentTooLong(string content, out int estimatedTokens)
     {
         estimatedTokens = EstimateTokens(content);
-        
-        // 对于 mem0，我们需要计算输入内容的最大允许长度
-        // 使用实际的 context window 而不是 max_tokens
-        int contextWindow = GLM46ContextWindow;
-        
-        // 计算实际可用的token数量，扣除所有预留空间
-        var allowedTokens = contextWindow - SystemPromptReservedTokens - FormattingReservedTokens - OutputReservedTokens;
-        return estimatedTokens > allowedTokens;
+        return estimatedTokens > MaxAllowedInputTokens;
     }
     
     /// <summary>
@@ -101,6 +99,18 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
                     }
                 });
 
+            // 清理该warehouse的历史记忆，避免上下文累积
+            try
+            {
+                logger.LogInformation("清理 warehouse {WarehouseId} 的历史mem0记忆", warehouse.Id);
+                await client.DeleteAllAsync(warehouse.Id, cancellationToken: stoppingToken);
+                logger.LogInformation("成功清理 warehouse {WarehouseId} 的历史记忆", warehouse.Id);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "清理 warehouse {WarehouseId} 历史记忆失败，继续处理", warehouse.Id);
+            }
+
             var catalogs = await dbContext.DocumentCatalogs
                 .Where(x => x.DucumentId == documents.Id && x.IsCompleted == true && x.IsDeleted == false)
                 .ToListAsync(stoppingToken);
@@ -135,13 +145,11 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
                         // 检查内容长度
                         if (IsContentTooLong(content.Content, out var estimatedTokens))
                         {
-                            var allowedTokens = GLM46ContextWindow - SystemPromptReservedTokens - FormattingReservedTokens - OutputReservedTokens;
-                            
                             logger.LogWarning(
                                 "目录 {Catalog} 内容过长 (约 {EstimatedTokens} tokens，限制 {MaxTokens} tokens)，将截断内容",
-                                catalog.Name, estimatedTokens, allowedTokens);
-                            
-                            content.Content = TruncateContent(content.Content, allowedTokens);
+                                catalog.Name, estimatedTokens, MaxAllowedInputTokens);
+
+                            content.Content = TruncateContent(content.Content, MaxAllowedInputTokens);
                         }
 
                         // 获取依赖文件
@@ -190,13 +198,25 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
                     catch (Exception ex)
                     {
                         retryCount++;
+
+                        // 检查是否是token超限错误
+                        var isTokenError = ex.Message.Contains("maximum context length") ||
+                                          ex.Message.Contains("tokens") ||
+                                          ex.Message.Contains("context window");
+
                         if (retryCount >= maxRetries)
                         {
-                            logger.LogError(ex, "处理目录 {Catalog} 时发生错误，已重试 {RetryCount} 次", catalog, retryCount);
+                            logger.LogError(ex,
+                                "处理目录 {Catalog} 时发生错误，已重试 {RetryCount} 次。错误类型: {ErrorType}。详细信息: {Message}",
+                                catalog.Name, retryCount,
+                                isTokenError ? "Token超限" : "其他错误",
+                                ex.Message);
                         }
                         else
                         {
-                            logger.LogWarning(ex, "处理目录 {Catalog} 时发生错误，重试第 {RetryCount} 次", catalog, retryCount);
+                            logger.LogWarning(ex,
+                                "处理目录 {Catalog} 时发生错误，重试第 {RetryCount} 次。错误: {Message}",
+                                catalog.Name, retryCount, ex.Message);
                             await Task.Delay(1000 * retryCount, ct); // 指数退避
                         }
                     }
@@ -232,13 +252,11 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
                     // 检查内容长度
                     if (IsContentTooLong(content, out var estimatedTokens))
                     {
-                        var allowedTokens = GLM46ContextWindow - SystemPromptReservedTokens - FormattingReservedTokens - OutputReservedTokens;
-                        
                         logger.LogWarning(
                             "文件 {File} 内容过长 (约 {EstimatedTokens} tokens，限制 {MaxTokens} tokens)，将截断内容",
-                            file.Name, estimatedTokens, allowedTokens);
-                        
-                        content = TruncateContent(content, allowedTokens);
+                            file.Name, estimatedTokens, MaxAllowedInputTokens);
+
+                        content = TruncateContent(content, MaxAllowedInputTokens);
                     }
 
                     // 处理文件内容
@@ -270,11 +288,21 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
                 catch (Exception ex)
                 {
                     Interlocked.Increment(ref fileFailureCount);
-                    logger.LogError(ex, "处理文件 {File} 时发生错误", file);
+
+                    // 检查是否是token超限错误
+                    var isTokenError = ex.Message.Contains("maximum context length") ||
+                                      ex.Message.Contains("tokens") ||
+                                      ex.Message.Contains("context window");
+
+                    logger.LogError(ex,
+                        "处理文件 {File} 时发生错误。错误类型: {ErrorType}。详细信息: {Message}",
+                        file.Name,
+                        isTokenError ? "Token超限" : "其他错误",
+                        ex.Message);
 
                     if (fileFailureCount >= fileFailureThreshold)
                     {
-                        logger.LogError("文件处理连续失败超过阈值，触发熔断，停止后续处理。");
+                        logger.LogError("文件处理连续失败超过阈值({Threshold})，触发熔断，停止后续处理。", fileFailureThreshold);
                         circuitBroken = true;
                     }
                 }

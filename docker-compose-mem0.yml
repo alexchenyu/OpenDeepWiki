@@ -33,7 +33,9 @@
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:18889
       - ENABLE_CODE_COMPRESSION=true # 启用代码压缩以减少token使用
       - CATALOGUE_FORMAT=compact # 使用紧凑的目录格式
-      - READ_MAX_TOKENS=50000  # 文件读取token限制（不影响目录结构）
+      - READ_MAX_TOKENS=30000  # AI读取文件的总token限制
+      - CATALOGUE_MAX_TOKENS=15000  # 目录结构的最大token数量
+      - CHARS_PER_TOKEN=2.0  # 字符转token的估算比例（中文约2.0，英文约3.5）
       - MAX_FILE_READ_COUNT=5  # 最多5个文件
     ports:
       - "8080:8080"
@@ -119,6 +121,7 @@
     environment:
       - TZ=America/Los_Angeles
       - NEO4J_AUTH=neo4j/mem0graph
+      - NEO4J_db_temporal_timezone=America/Los_Angeles
       - NEO4J_PLUGINS=["apoc"]  # Add this line to install APOC
       - NEO4J_apoc_export_file_enabled=true
       - NEO4J_apoc_import_file_enabled=true

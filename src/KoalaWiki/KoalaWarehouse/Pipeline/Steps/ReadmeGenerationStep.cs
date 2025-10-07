@@ -137,6 +137,18 @@ public class ReadmeGenerationStep : DocumentProcessingStepBase<DocumentProcessin
             var catalogue = DocumentsHelper.GetCatalogue(path);
             activity?.SetTag("catalogue.length", catalogue?.Length ?? 0);
 
+            // 检查并截断过长的 catalogue，使用配置的限制
+            int estimatedTokens = (int)(catalogue.Length / DocumentOptions.CharsPerToken);
+
+            if (estimatedTokens > DocumentOptions.CatalogueMaxTokens)
+            {
+                int allowedChars = (int)(DocumentOptions.CatalogueMaxTokens * DocumentOptions.CharsPerToken);
+                activity?.SetTag("catalogue.truncated", true);
+                activity?.SetTag("catalogue.estimated_tokens", estimatedTokens);
+                activity?.SetTag("catalogue.max_tokens", DocumentOptions.CatalogueMaxTokens);
+                catalogue = catalogue.Substring(0, allowedChars) + "\n... (目录结构已截断)";
+            }
+
             var kernel = KernelFactory.GetKernel(OpenAIOptions.Endpoint,
                 OpenAIOptions.ChatApiKey,
                 path, OpenAIOptions.ChatModel);

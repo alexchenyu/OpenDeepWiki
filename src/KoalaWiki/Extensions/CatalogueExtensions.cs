@@ -22,13 +22,16 @@ public static class CatalogueExtensions
         // 递归扫描目录所有文件和目录
         DocumentsHelper.ScanDirectory(path, pathInfos, ignoreFiles);
 
+        // 只保留文件，排除目录（避免 LLM 尝试读取目录导致错误和循环重试）
+        var fileInfos = pathInfos.Where(p => p.Type == "File").ToList();
+
         // 如果文件数量超过500，返回智能摘要而非完整目录树
-        if (pathInfos.Count >= 500)
+        if (fileInfos.Count >= 500)
         {
-            return GenerateDirectorySummary(pathInfos, path);
+            return GenerateDirectorySummary(fileInfos, path);
         }
 
-        var fileTree = FileTreeBuilder.BuildTree(pathInfos, path);
+        var fileTree = FileTreeBuilder.BuildTree(fileInfos, path);
         return format.ToLower() switch
         {
             "json" => FileTreeBuilder.ToCompactJson(fileTree),

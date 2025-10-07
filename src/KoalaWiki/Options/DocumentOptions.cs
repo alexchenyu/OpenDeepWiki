@@ -83,6 +83,21 @@ public class DocumentOptions
     public static int ReadMaxTokens { get; set; } = 80000;
 
     /// <summary>
+    /// Catalogue（目录结构）的最大 token 数量
+    /// 用于控制发送给 AI 的仓库目录结构大小，避免超过模型上下文窗口
+    /// </summary>
+    /// <returns></returns>
+    public static int CatalogueMaxTokens { get; set; } = 15000;
+
+    /// <summary>
+    /// 字符转 token 的估算比例
+    /// 用于粗略估算文本的 token 数量（实际值取决于语言和内容类型）
+    /// 中文通常为 1.5-2.0，英文通常为 3-4，代码通常为 2.5-3.5
+    /// </summary>
+    /// <returns></returns>
+    public static double CharsPerToken { get; set; } = 2.0;
+
+    /// <summary>
     /// Git代理设置
     /// 支持HTTP/HTTPS代理，格式：http://proxy-server:port 或 https://proxy-server:port
     /// 可通过环境变量GIT_PROXY进行配置
@@ -181,6 +196,24 @@ public class DocumentOptions
             if (int.TryParse(maxFileReadCount, out var count) && count >= 0)
             {
                 ReadMaxTokens = count;
+            }
+        }
+
+        var catalogueMaxTokens = configuration.GetValue<string>($"CATALOGUE_MAX_TOKENS");
+        if (!string.IsNullOrEmpty(catalogueMaxTokens))
+        {
+            if (int.TryParse(catalogueMaxTokens, out var count) && count > 0)
+            {
+                CatalogueMaxTokens = count;
+            }
+        }
+
+        var charsPerToken = configuration.GetValue<string>($"CHARS_PER_TOKEN");
+        if (!string.IsNullOrEmpty(charsPerToken))
+        {
+            if (double.TryParse(charsPerToken, out var ratio) && ratio > 0)
+            {
+                CharsPerToken = ratio;
             }
         }
 

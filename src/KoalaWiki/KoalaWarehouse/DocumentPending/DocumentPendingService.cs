@@ -144,6 +144,21 @@ public partial class DocumentPendingService
 
                 Log.Logger.Information("处理仓库；{path} ,处理标题：{name}", path, catalog.Name);
 
+                // 检查并截断过长的 catalogue
+                // GLM-4.6-FP8 模型的 context window 是 202752
+                // 预算分配: system prompts (~25k) + catalogue (max 120k) + output (16k) + 其他 prompts (~20k) = ~181k < 202752
+                const int maxCatalogueTokens = 100000; // 降低到 100000，为所有 system prompts 和输出预留足够空间
+                const double charsPerToken = 3.5;
+                int estimatedTokens = (int)(catalogue.Length / charsPerToken);
+
+                if (estimatedTokens > maxCatalogueTokens)
+                {
+                    int allowedChars = (int)(maxCatalogueTokens * charsPerToken);
+                    Log.Logger.Warning("目录结构过长 (约 {EstimatedTokens} tokens，限制 {MaxTokens} tokens)，将截断内容",
+                        estimatedTokens, maxCatalogueTokens);
+                    catalogue = catalogue.Substring(0, allowedChars) + "\n... (目录结构已截断)";
+                }
+
                 DocumentContext.DocumentStore = new DocumentStore();
 
                 var docs = new DocsFunction();

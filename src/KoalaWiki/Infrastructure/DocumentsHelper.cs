@@ -195,6 +195,10 @@ public class DocumentsHelper
 
         foreach (var info in pathInfos)
         {
+            // 只包含文件，排除目录（避免 LLM 尝试读取目录导致错误和循环重试）
+            if (info.Type != "File")
+                continue;
+
             // 删除前缀 Constant.GitPath
             var relativePath = info.Path.Replace(path, "").TrimStart('\\');
 
