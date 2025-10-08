@@ -22,7 +22,9 @@ public static class MiniMapService
     {
         // 使用AnalysisModel，如果为空则使用ChatModel
         string modelToUse = string.IsNullOrEmpty(OpenAIOptions.AnalysisModel) ? OpenAIOptions.ChatModel : OpenAIOptions.AnalysisModel;
-        
+
+        // 注意：catalogue 已经在调用方通过 maxDepth 参数进行了深度限制
+        // 不再需要在这里进行截断
         string prompt = await PromptContext.Warehouse(nameof(PromptConstant.Warehouse.GenerateMindMap),
             new KernelArguments()
             {

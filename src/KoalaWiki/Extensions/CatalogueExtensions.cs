@@ -10,9 +10,10 @@ public static class CatalogueExtensions
     /// </summary>
     /// <param name="document"></param>
     /// <param name="format">输出格式</param>
+    /// <param name="maxDepth">最大深度限制（用于 MindMap 等场景），0 表示不限制</param>
     /// <returns>优化后的目录结构</returns>
     public static string GetCatalogueSmartFilterOptimized(this Document document,
-        string format = "compact")
+        string format = "compact", int maxDepth = 0)
     {
         var path = document.GitPath;
 
@@ -24,6 +25,13 @@ public static class CatalogueExtensions
 
         // 只保留文件，排除目录（避免 LLM 尝试读取目录导致错误和循环重试）
         var fileInfos = pathInfos.Where(p => p.Type == "File").ToList();
+
+        // 如果指定了深度限制，进行深度过滤
+        if (maxDepth > 0)
+        {
+            fileInfos = FilterByDepth(fileInfos, path, maxDepth);
+            Log.Logger.Information("应用深度限制 {MaxDepth}，过滤后文件数: {Count}", maxDepth, fileInfos.Count);
+        }
 
         // 如果文件数量超过500，返回智能摘要而非完整目录树
         if (fileInfos.Count >= 500)
@@ -38,6 +46,20 @@ public static class CatalogueExtensions
             "pathlist" => string.Join("\n", FileTreeBuilder.ToPathList(fileTree)),
             "compact" or _ => FileTreeBuilder.ToCompactString(fileTree)
         };
+    }
+
+    /// <summary>
+    /// 按深度过滤文件列表
+    /// </summary>
+    private static List<PathInfo> FilterByDepth(List<PathInfo> pathInfos, string basePath, int maxDepth)
+    {
+        return pathInfos.Where(p =>
+        {
+            var relativePath = p.Path.Replace(basePath, "").TrimStart(Path.DirectorySeparatorChar, '/');
+            var depth = relativePath.Split(new[] { Path.DirectorySeparatorChar, '/' },
+                StringSplitOptions.RemoveEmptyEntries).Length;
+            return depth <= maxDepth;
+        }).ToList();
     }
 
     /// <summary>

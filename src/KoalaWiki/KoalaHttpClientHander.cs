@@ -58,6 +58,16 @@ public sealed class KoalaHttpClientHandler : HttpClientHandler
             }
         }
 
+        // 关闭推理模式: GLM-4.6-FP8 推理模型
+        if (model.Contains("GLM-4.6-FP8", StringComparison.CurrentCultureIgnoreCase)
+            || model.Contains("glm-4", StringComparison.CurrentCultureIgnoreCase))
+        {
+            // GLM 推理模型通过 chat_template_kwargs 关闭推理
+            // litellm 会自动将非标准参数传递给 vLLM
+            json.chat_template_kwargs = new Newtonsoft.Json.Linq.JObject();
+            json.chat_template_kwargs.enable_thinking = false;
+        }
+
         // 重写请求体
         request.Content = new StringContent(JsonConvert.SerializeObject(json),
             System.Text.Encoding.UTF8, "application/json");

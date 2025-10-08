@@ -45,10 +45,12 @@ sudo make down
 docker stop opendeepwiki-koalawiki-1 aspire-dashboard mem0 opendeepwiki-postgres-1 neo4j opendeepwiki-mem0
 docker rm opendeepwiki-koalawiki-1 aspire-dashboard mem0 opendeepwiki-postgres-1 neo4j opendeepwiki-mem0
 docker rmi $(docker images --filter "dangling=true" -q --no-trunc)
-docker rmi crpi-j9ha7sxwhatgtvj4.cn-shenzhen.personal.cr.aliyuncs.com/koala-ai/koala-wiki mcr.microsoft.com/dotnet/aspire-dashboard neo4j:5.26.4 registry.cn-shenzhen.aliyuncs.com/tokengo/mem0 opendeepwiki-mem0
+docker rmi crpi-j9ha7sxwhatgtvj4.cn-shenzhen.personal.cr.aliyuncs.com/koala-ai/koala-wiki mcr.microsoft.com/dotnet/aspire-dashboard neo4j:5.26.4 registry.cn-shenzhen.aliyuncs.com/tokengo/mem0 opendeepwiki-mem0 opendeepwiki_koalawiki
 sudo rm -rf repositories/openbmc
 sudo rm -rf data/ postgres_db/ neo4j_data/ repositories/
-make build
+cd web-site && npm run build && cd ..  # 构建前端
+docker-compose -f docker-compose-mem0.yml build --no-cache
+# make build --no-cache
 rm mem0.log
 make dev-mem0 2>&1 | tee mem0.log
 

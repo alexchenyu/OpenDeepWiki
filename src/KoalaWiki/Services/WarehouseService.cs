@@ -23,7 +23,8 @@ public class WarehouseService(
     IMapper mapper,
     IUserContext userContext,
     IHttpContextAccessor httpContextAccessor,
-    IMemoryCache memoryCache)
+    IMemoryCache memoryCache,
+    ILogger<WarehouseService> logger)
     : FastApi
 {
     /// <summary>
@@ -327,17 +328,19 @@ public class WarehouseService(
     [Authorize]
     public async Task UploadAndSubmitWarehouseAsync(HttpContext context)
     {
-        if (!DocumentOptions.EnableWarehouseCommit)
+        try
         {
-            throw new Exception("抱歉，管理员暂时关闭了提交新仓库权限，如果您有需求请联系微信：wk28u9123456789");
-        }
+            if (!DocumentOptions.EnableWarehouseCommit)
+            {
+                throw new Exception("抱歉，管理员暂时关闭了提交新仓库权限，如果您有需求请联系微信：wk28u9123456789");
+            }
 
-        if (!DocumentOptions.EnableFileCommit)
-        {
-            throw new Exception("抱歉，管理员暂时关闭了提交新仓库权限，如果您有需求请联系微信：wk28u9123456789");
-        }
+            if (!DocumentOptions.EnableFileCommit)
+            {
+                throw new Exception("抱歉，管理员暂时关闭了提交新仓库权限，如果您有需求请联系微信：wk28u9123456789");
+            }
 
-        var organization = context.Request.Form["organization"].ToString();
+            var organization = context.Request.Form["organization"].ToString();
         var repositoryName = context.Request.Form["repositoryName"].ToString();
 
         if (string.IsNullOrEmpty(organization) || string.IsNullOrEmpty(repositoryName))
@@ -488,13 +491,27 @@ public class WarehouseService(
 
         await koala.Warehouses.AddAsync(entity);
 
-        await koala.SaveChangesAsync();
+            await koala.SaveChangesAsync();
 
-        await context.Response.WriteAsJsonAsync(new
+            await context.Response.WriteAsJsonAsync(new
+            {
+                code = 200,
+                success = true,
+                message = "提交成功"
+            });
+        }
+        catch (Exception e)
         {
-            code = 200,
-            message = "提交成功"
-        });
+            logger.LogError(e, "上传并提交仓库失败: {Organization}/{Repository}",
+                context.Request.Form["organization"], context.Request.Form["repositoryName"]);
+            await context.Response.WriteAsJsonAsync(new
+            {
+                code = 500,
+                success = false,
+                error = e.Message,
+                message = e.Message
+            });
+        }
     }
 
     /// <summary>
@@ -593,14 +610,18 @@ public class WarehouseService(
             await context.Response.WriteAsJsonAsync(new
             {
                 code = 200,
+                success = true,
                 message = "提交成功"
             });
         }
         catch (Exception e)
         {
+            logger.LogError(e, "提交仓库失败: {Address}, Branch: {Branch}", input.Address, input.Branch);
             await context.Response.WriteAsJsonAsync(new
             {
                 code = 500,
+                success = false,
+                error = e.Message,
                 message = e.Message
             });
         }
@@ -684,14 +705,19 @@ public class WarehouseService(
             await context.Response.WriteAsJsonAsync(new
             {
                 code = 200,
+                success = true,
                 message = "提交成功"
             });
         }
         catch (Exception e)
         {
+            logger.LogError(e, "自定义提交仓库失败: {Organization}/{Repository}, Branch: {Branch}",
+                input.Organization, input.RepositoryName, input.Branch);
             await context.Response.WriteAsJsonAsync(new
             {
                 code = 500,
+                success = false,
+                error = e.Message,
                 message = e.Message
             });
         }

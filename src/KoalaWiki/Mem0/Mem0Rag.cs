@@ -11,18 +11,24 @@ namespace KoalaWiki.Mem0;
 public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : BackgroundService
 {
     // Token限制：为系统提示、格式化和输出预留空间
-    private const int SystemPromptReservedTokens = 8000; // system prompt 通常较长，增加预留
-    private const int FormattingReservedTokens = 2000;   // 格式化标签和标题
-    private const int OutputReservedTokens = 16384;      // LLM 输出空间（max_tokens）
-    private const int HistoryReservedTokens = 50000;     // 历史对话预留空间（mem0会累积历史）
-    private const double CharsPerToken = 2.5; // 更保守的估算（中文+代码混合）
+    private const int SystemPromptReservedTokens = 8000;  // system prompt 通常较长，增加预留
+    private const int FormattingReservedTokens = 2000;    // 格式化标签和标题
+    private const int OutputReservedTokens = 16384;       // LLM 输出空间（max_tokens）
+    private const int HistoryReservedTokens = 130000;     // Mem0检索和历史预留（超大！因为有graph store）
+    private const double CharsPerToken = 1.5;  // 极度保守的估算（中文+代码，1.5字符=1token）
 
     // GLM-4.6-FP8 的实际 context window
     private const int GLM46ContextWindow = 202752;
 
     // 实际可用的最大token数量（扣除所有预留空间）
+    // Mem0会添加大量检索内容（尤其是graph store），所以用户消息必须极度保守
+    // 计算结果: 202752 - 8000 - 2000 - 16384 - 130000 = 46368
+    // 但我们再取25%安全边界: 202752 * 0.2 = 40550
     private static int MaxAllowedInputTokens =>
-        GLM46ContextWindow - SystemPromptReservedTokens - FormattingReservedTokens - OutputReservedTokens - HistoryReservedTokens;
+        Math.Min(
+            GLM46ContextWindow - SystemPromptReservedTokens - FormattingReservedTokens - OutputReservedTokens - HistoryReservedTokens,
+            (int)(GLM46ContextWindow * 0.2) // 单次输入不超过20% context window！
+        );
     
     /// <summary>
     /// 估算文本的token数量
@@ -98,6 +104,11 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
                         UserAgent = { new ProductInfoHeaderValue("KoalaWiki", "1.0") }
                     }
                 });
+
+            // 为每次处理生成唯一的session ID，避免历史累积
+            var sessionId = $"{warehouse.Id}_{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid():N}";
+            logger.LogInformation("开始处理 warehouse {WarehouseId}，使用唯一session: {SessionId}",
+                warehouse.Id, sessionId);
 
             var catalogs = await dbContext.DocumentCatalogs
                 .Where(x => x.DucumentId == documents.Id && x.IsCompleted == true && x.IsDeleted == false)
@@ -178,7 +189,7 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
                                                </file>
                                                """
                                 }
-                            ], userId: warehouse.Id, metadata: new Dictionary<string, object>()
+                            ], userId: sessionId, metadata: new Dictionary<string, object>()
                             {
                                 { "id", catalog.Id },
                                 { "name", catalog.Name },
@@ -207,7 +218,25 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
                         // 检查是否是token超限错误
                         var isTokenError = ex.Message.Contains("maximum context length") ||
                                           ex.Message.Contains("tokens") ||
-                                          ex.Message.Contains("context window");
+                                          ex.Message.Contains("context window") ||
+                                          ex.Message.Contains("too long");
+
+                        if (isTokenError && retryCount < maxRetries)
+                        {
+                            // Token超限时，自动缩减内容到50%再重试
+                            var content = await innerDbContext!.DocumentFileItems
+                                .Where(x => x.DocumentCatalogId == catalog.Id)
+                                .FirstOrDefaultAsync(cancellationToken: ct);
+
+                            if (content != null && !string.IsNullOrWhiteSpace(content.Content))
+                            {
+                                var reducedLimit = MaxAllowedInputTokens / (retryCount + 1); // 逐次减半
+                                logger.LogWarning(
+                                    "目录 {Catalog} Token超限，自动缩减到 {ReducedLimit} tokens 后重试",
+                                    catalog.Name, reducedLimit);
+                                content.Content = TruncateContent(content.Content, reducedLimit);
+                            }
+                        }
 
                         if (retryCount >= maxRetries)
                         {
@@ -337,17 +366,9 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
             logger.LogInformation("文件处理完成: 成功 {Success}/{Total}, 失败 {Failed}",
                 fileSuccess, files.Count, fileFailureCount);
 
-            // 完成后清理该warehouse的历史，避免下次处理时累积
-            try
-            {
-                logger.LogInformation("清理 warehouse {WarehouseId} 的历史mem0记忆", warehouse.Id);
-                await client.DeleteAllAsync(warehouse.Id, cancellationToken: stoppingToken);
-                logger.LogInformation("成功清理 warehouse {WarehouseId} 的历史记忆", warehouse.Id);
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "清理 warehouse {WarehouseId} 历史记忆失败", warehouse.Id);
-            }
+            // 使用唯一session ID，不需要手动清理，session结束后自然隔离
+            logger.LogInformation("完成 warehouse {WarehouseId} 的处理，使用的session: {SessionId}",
+                warehouse.Id, sessionId);
 
             await dbContext.Warehouses
                 .Where(x => x.Id == warehouse.Id)

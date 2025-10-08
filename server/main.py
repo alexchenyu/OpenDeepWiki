@@ -11,7 +11,13 @@ from pydantic import BaseModel, Field
 
 from mem0 import Memory
 
+# 导入并应用 Neo4j 5.x 兼容性补丁
+from neo4j_patch import apply_all_patches
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+# 在导入 Memory 后立即应用补丁
+apply_all_patches()
 
 # Load environment variables
 load_dotenv()

@@ -146,9 +146,9 @@ public partial class DocumentPendingService
 
                 // 检查并截断过长的 catalogue
                 // GLM-4.6-FP8 模型的 context window 是 202752
-                // 预算分配: system prompts (~25k) + catalogue (max 120k) + output (16k) + 其他 prompts (~20k) = ~181k < 202752
-                const int maxCatalogueTokens = 100000; // 降低到 100000，为所有 system prompts 和输出预留足够空间
-                const double charsPerToken = 3.5;
+                // 使用配置的 CatalogueMaxTokens 和 CharsPerToken
+                int maxCatalogueTokens = DocumentOptions.CatalogueMaxTokens;
+                double charsPerToken = DocumentOptions.CharsPerToken;
                 int estimatedTokens = (int)(catalogue.Length / charsPerToken);
 
                 if (estimatedTokens > maxCatalogueTokens)

@@ -8,7 +8,7 @@
       - CHAT_MODEL=GLM-4.6-FP8 # 必须要支持function的模型
       - ANALYSIS_MODEL= # 分析模型，用于生成仓库目录结构，这个很重要，模型越强，生成的目录结构越好，为空则使用ChatModel
                         # 分析模型建议使用GPT-4.1  , CHAT模型可以用其他模型生成文档,以节省 token 开销
-      - CHAT_API_KEY=sk-ALZzlNLLC1mvBRnuLfv82A #您的APIkey
+      - CHAT_API_KEY=sk-a6IwJQ3_dJCANSipFXBcnw #您的APIkey
       - LANGUAGE= # 设置生成语言默认为“中文”, 英文可以填写 English 或 英文
       - ENDPOINT=http://us-agent.supermicro.com:4500/v1
       - DB_TYPE=sqlite
@@ -24,8 +24,10 @@
       - OTEL_SERVICE_NAME=koalawiki
       - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:18889
-      - READ_MAX_TOKENS=30000  # 为超大仓库目录结构预留空间（目录结构占大头）
-      - MAX_FILE_READ_COUNT=3  # 最多3个文件
+      - READ_MAX_TOKENS=140000  # GLM-4.6-FP8模型最大202752 tokens，设置为70%
+      - MAX_FILE_READ_COUNT=2  # 最多2个文件，减少token使用
+      - CATALOGUE_MAX_TOKENS=50000  # 目录结构最大token限制（超大仓库如openbmc需要严格限制）
+      - CHARS_PER_TOKEN=2.5  # 字符到token的转换比例（代码通常2.5-3.5）
     ports:
         - "8080:8080"
     volumes:

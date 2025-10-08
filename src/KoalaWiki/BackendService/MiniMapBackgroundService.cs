@@ -15,15 +15,14 @@ public sealed class MiniMapBackgroundService(IServiceProvider service) : Backgro
     {
         await Task.Delay(1000, stoppingToken); // 等待服务启动完成
 
-        using var scope = service.CreateScope();
-
-        var context = scope.ServiceProvider.GetRequiredService<IKoalaWikiContext>();
-
-
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
+                // 每次循环创建新的 scope，避免长时间持有 DbContext 导致连接问题
+                using var scope = service.CreateScope();
+                var context = scope.ServiceProvider.GetRequiredService<IKoalaWikiContext>();
+
                 var existingMiniMapIds = await context.MiniMaps
                     .Select(m => m.WarehouseId)
                     .ToListAsync(stoppingToken);
@@ -52,7 +51,10 @@ public sealed class MiniMapBackgroundService(IServiceProvider service) : Backgro
                         .Where(d => d.WarehouseId == item.Id)
                         .FirstOrDefaultAsync(stoppingToken);
 
-                    var miniMap = await MiniMapService.GenerateMiniMap(document.GetCatalogueSmartFilterOptimized(),
+                    // 为 MindMap 生成使用深度限制（3层），避免超大项目 token 超限
+                    // 例如：bitbake/bin/bitbake ✓ (3层), bitbake/lib/bb/tests/data.py ✗ (5层)
+                    var miniMap = await MiniMapService.GenerateMiniMap(
+                        document.GetCatalogueSmartFilterOptimized(maxDepth: 3),
                         item, document.GitPath);
                     if (miniMap != null)
                     {
@@ -78,8 +80,8 @@ public sealed class MiniMapBackgroundService(IServiceProvider service) : Backgro
             }
             catch (Exception e)
             {
-                await Task.Delay(10000, stoppingToken); // 等待1秒后重试
-                Log.Logger.Error("MiniMapBackgroundService 执行异常: {Message}", e.Message);
+                await Task.Delay(10000, stoppingToken); // 等待10秒后重试
+                Log.Logger.Error(e, "MiniMapBackgroundService 执行异常"); // 改为完整异常信息
             }
         }
     }

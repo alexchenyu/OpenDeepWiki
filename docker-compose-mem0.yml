@@ -1,6 +1,9 @@
 ﻿services:
   koalawiki:
-    image: crpi-j9ha7sxwhatgtvj4.cn-shenzhen.personal.cr.aliyuncs.com/koala-ai/koala-wiki
+    # image: crpi-j9ha7sxwhatgtvj4.cn-shenzhen.personal.cr.aliyuncs.com/koala-ai/koala-wiki
+    build:
+      context: .
+      dockerfile: src/KoalaWiki/Dockerfile
     deploy:
       resources:
         limits:
@@ -20,7 +23,7 @@
       - CHAT_MODEL=GLM-4.6-FP8 # 必须要支持function的模型
       - ANALYSIS_MODEL=GLM-4.6-FP8 # 分析模型，用于生成仓库目录结构，这个很重要，模型越强，生成的目录结构越好，为空则使用ChatModel
       # 分析模型建议使用GPT-4.1  , CHAT模型可以用其他模型生成文档,以节省 token 开销
-      - CHAT_API_KEY=sk-ALZzlNLLC1mvBRnuLfv82A #您的APIkey
+      - CHAT_API_KEY=sk-a6IwJQ3_dJCANSipFXBcnw #您的APIkey
       - LANGUAGE= # 设置生成语言默认为"中文", 英文可以填写 English 或 英文
       - ENDPOINT=http://us-agent.supermicro.com:4500/v1
       - DB_TYPE=postgres
@@ -28,9 +31,9 @@
       - UPDATE_INTERVAL=5 # 仓库增量更新间隔，单位天
       - EnableSmartFilter=true # 是否启用智能过滤，这可能影响AI得到仓库的文件目录
       - ENABLE_INCREMENTAL_UPDATE=true # 是否启用增量更新
-      - ENABLE_CODED_DEPENDENCY_ANALYSIS=false # 是否启用代码依赖分析？这可能会对代码的质量产生影响。
-      - ENABLE_WAREHOUSE_FUNCTION_PROMPT_TASK=false # 是否启用MCP Prompt生成
-      - ENABLE_WAREHOUSE_DESCRIPTION_TASK=false # 是否启用仓库Description生成
+      - ENABLE_CODED_DEPENDENCY_ANALYSIS=true # 是否启用代码依赖分析？这可能会对代码的质量产生影响。
+      - ENABLE_WAREHOUSE_FUNCTION_PROMPT_TASK=true # 是否启用MCP Prompt生成
+      - ENABLE_WAREHOUSE_DESCRIPTION_TASK=true # 是否启用仓库Description生成
       - ENABLE_MEM0=true # 是否启用Mem0 RAG用于增强对话检索能力
       - MEM0_API_KEY=koala-ai # Mem0 API Key
       - MEM0_ENDPOINT=http://mem0:8000 # Mem0 API Endpoint
@@ -39,10 +42,10 @@
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:18889
       - ENABLE_CODE_COMPRESSION=true # 启用代码压缩以减少token使用
       - CATALOGUE_FORMAT=compact # 使用紧凑的目录格式
-      - READ_MAX_TOKENS=30000  # AI读取文件的总token限制
-      - CATALOGUE_MAX_TOKENS=15000  # 目录结构的最大token数量
-      - CHARS_PER_TOKEN=2.0  # 字符转token的估算比例（中文约2.0，英文约3.5）
-      - MAX_FILE_READ_COUNT=5  # 最多5个文件
+      - READ_MAX_TOKENS=140000  # GLM-4.6-FP8模型最大202752 tokens，设置为70%
+      - CATALOGUE_MAX_TOKENS=50000  # 目录结构最大token限制（超大仓库如openbmc需要严格限制）
+      - CHARS_PER_TOKEN=2.5  # 字符到token的转换比例（代码通常2.5-3.5）
+      - MAX_FILE_READ_COUNT=3  # 最多3个文件
     ports:
       - "8080:8080"
     volumes:
@@ -77,7 +80,7 @@
       - PYTHONUNBUFFERED=1  # Ensures Python output is sent straight to terminal
       - API_KEY=koala-ai
       # 通过 litellm 统一访问所有模型（litellm 需要配置 drop_params=true）
-      - OPENAI_API_KEY=sk-ALZzlNLLC1mvBRnuLfv82A
+      - OPENAI_API_KEY=sk-a6IwJQ3_dJCANSipFXBcnw
       - OPENAI_BASE_URL=http://us-agent.supermicro.com:4500/v1
       - OPENAI_CHAT_MODEL=GLM-4.6-FP8
       - OPENAI_EMBEDDING_MODEL=nvidia_embed
