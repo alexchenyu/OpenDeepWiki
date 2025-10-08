@@ -49,7 +49,7 @@ docker rmi crpi-j9ha7sxwhatgtvj4.cn-shenzhen.personal.cr.aliyuncs.com/koala-ai/k
 sudo rm -rf repositories/openbmc
 sudo rm -rf data/ postgres_db/ neo4j_data/ repositories/
 cd web-site && npm run build && cd ..  # 构建前端
-docker-compose -f docker-compose-mem0.yml build --no-cache
+docker-compose -f docker-compose-mem0.yml build --no-cache koalawiki
 # make build --no-cache
 rm mem0.log
 make dev-mem0 2>&1 | tee mem0.log

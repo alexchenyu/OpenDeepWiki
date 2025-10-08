@@ -13,7 +13,36 @@ public sealed class MiniMapBackgroundService(IServiceProvider service) : Backgro
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await Task.Delay(1000, stoppingToken); // 等待服务启动完成
+        await Task.Delay(5000, stoppingToken); // 等待服务启动完成
+
+        // 等待数据库连接就绪
+        var dbReady = false;
+        var retryCount = 0;
+        const int maxRetries = 10;
+
+        while (!dbReady && retryCount < maxRetries && !stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                using var testScope = service.CreateScope();
+                var testContext = testScope.ServiceProvider.GetRequiredService<IKoalaWikiContext>();
+                await testContext.Warehouses.AnyAsync(stoppingToken);
+                dbReady = true;
+                Log.Logger.Information("MiniMapBackgroundService：数据库连接就绪");
+            }
+            catch (Exception ex)
+            {
+                retryCount++;
+                Log.Logger.Warning(ex, "MiniMapBackgroundService：等待数据库连接就绪 (尝试 {RetryCount}/{MaxRetries})", retryCount, maxRetries);
+                await Task.Delay(3000, stoppingToken); // 等待3秒后重试
+            }
+        }
+
+        if (!dbReady)
+        {
+            Log.Logger.Error("MiniMapBackgroundService：数据库连接失败，服务退出");
+            return;
+        }
 
         while (!stoppingToken.IsCancellationRequested)
         {

@@ -62,7 +62,8 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
     }
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await Task.Delay(100, stoppingToken);
+        // 等待更长时间，确保数据库已启动
+        await Task.Delay(5000, stoppingToken);
 
         if (OpenAIOptions.EnableMem0 == false)
         {
@@ -70,16 +71,46 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
             return;
         }
 
+        // 等待数据库连接就绪
+        var dbReady = false;
+        var retryCount = 0;
+        const int maxRetries = 10;
+
+        while (!dbReady && retryCount < maxRetries && !stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await using var testScope = service.CreateAsyncScope();
+                var testDbContext = testScope.ServiceProvider.GetService<IKoalaWikiContext>();
+                await testDbContext!.Warehouses.AnyAsync(stoppingToken);
+                dbReady = true;
+                logger.LogInformation("Mem0Rag 服务：数据库连接就绪");
+            }
+            catch (Exception ex)
+            {
+                retryCount++;
+                logger.LogWarning(ex, "Mem0Rag 服务：等待数据库连接就绪 (尝试 {RetryCount}/{MaxRetries})", retryCount, maxRetries);
+                await Task.Delay(3000, stoppingToken); // 等待3秒后重试
+            }
+        }
+
+        if (!dbReady)
+        {
+            logger.LogError("Mem0Rag 服务：数据库连接失败，服务退出");
+            return;
+        }
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            // 读取现有的仓库
-            await using var scope = service.CreateAsyncScope();
-            var dbContext = scope.ServiceProvider.GetService<IKoalaWikiContext>();
+            try
+            {
+                // 每次循环创建新的 scope，避免长时间持有 DbContext 导致连接问题
+                await using var scope = service.CreateAsyncScope();
+                var dbContext = scope.ServiceProvider.GetService<IKoalaWikiContext>();
 
-            var warehouse = await dbContext!.Warehouses
-                .Where(x => x.Status == WarehouseStatus.Completed && x.IsEmbedded == false)
-                .FirstOrDefaultAsync(stoppingToken);
+                var warehouse = await dbContext!.Warehouses
+                    .Where(x => x.Status == WarehouseStatus.Completed && x.IsEmbedded == false)
+                    .FirstOrDefaultAsync(stoppingToken);
 
             if (warehouse == null)
             {
@@ -376,6 +407,12 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
 
             logger.LogInformation("完成 warehouse {WarehouseId} ({WarehouseName}) 的处理",
                 warehouse.Id, warehouse.Name);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Mem0Rag 服务主循环发生异常，等待30秒后重试");
+                await Task.Delay(30000, stoppingToken);
+            }
         }
     }
 }
