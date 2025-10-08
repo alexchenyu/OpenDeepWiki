@@ -136,6 +136,8 @@ public class DocumentsHelper
             "o3-mini" => 32768,
             "Qwen/Qwen3-235B-A22B" => null,
             "grok-3" => 65536,
+            "grok-4-fast-reasoning" => 131072,  // Grok-4有2M上下文，输出可以更长
+            "grok-4-fast-non-reasoning" => 131072,  // Grok-4 non-reasoning版本，同样的输出能力
             "qwen2.5-coder-3b-instruct" => 65535,
             "qwen3-235b-a22b" => 16384,
             "claude-sonnet-4-20250514" => 63999,

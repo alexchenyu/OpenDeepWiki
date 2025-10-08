@@ -20,8 +20,8 @@
       - KOALAWIKI_REPOSITORIES=/repositories
       - TASK_MAX_SIZE_PER_USER=5 # 每个用户AI处理文档生成的最大数量
       - REPAIR_MERMAID=1 # 是否进行Mermaid修复，1修复，其余不修复
-      - CHAT_MODEL=GLM-4.6-FP8 # 必须要支持function的模型
-      - ANALYSIS_MODEL=GLM-4.6-FP8 # 分析模型，用于生成仓库目录结构，这个很重要，模型越强，生成的目录结构越好，为空则使用ChatModel
+      - CHAT_MODEL=grok-4-fast-non-reasoning # 必须要支持function的模型
+      - ANALYSIS_MODEL=grok-4-fast-non-reasoning # 分析模型，用于生成仓库目录结构，这个很重要，模型越强，生成的目录结构越好，为空则使用ChatModel
       # 分析模型建议使用GPT-4.1  , CHAT模型可以用其他模型生成文档,以节省 token 开销
       - CHAT_API_KEY=sk-a6IwJQ3_dJCANSipFXBcnw #您的APIkey
       - LANGUAGE= # 设置生成语言默认为"中文", 英文可以填写 English 或 英文
@@ -42,8 +42,8 @@
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:18889
       - ENABLE_CODE_COMPRESSION=true # 启用代码压缩以减少token使用
       - CATALOGUE_FORMAT=compact # 使用紧凑的目录格式
-      - READ_MAX_TOKENS=140000  # GLM-4.6-FP8模型最大202752 tokens，设置为70%
-      - CATALOGUE_MAX_TOKENS=50000  # 目录结构最大token限制（超大仓库如openbmc需要严格限制）
+      - READ_MAX_TOKENS=1000000  # GLM-4.6-FP8模型最大202752 tokens，设置为70%
+      - CATALOGUE_MAX_TOKENS=500000  # 目录结构最大token限制（超大仓库如openbmc需要严格限制）
       - CHARS_PER_TOKEN=2.5  # 字符到token的转换比例（代码通常2.5-3.5）
       - MAX_FILE_READ_COUNT=3  # 最多3个文件
     ports:
@@ -82,7 +82,7 @@
       # 通过 litellm 统一访问所有模型（litellm 需要配置 drop_params=true）
       - OPENAI_API_KEY=sk-a6IwJQ3_dJCANSipFXBcnw
       - OPENAI_BASE_URL=http://us-agent.supermicro.com:4500/v1
-      - OPENAI_CHAT_MODEL=GLM-4.6-FP8
+      - OPENAI_CHAT_MODEL=grok-4-fast-non-reasoning
       - OPENAI_EMBEDDING_MODEL=nvidia_embed
       - EMBEDDING_MODEL_DIMS=4096
       # Graph Store 配置（完整功能启用！）

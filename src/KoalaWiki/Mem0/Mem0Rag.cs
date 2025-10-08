@@ -11,23 +11,23 @@ namespace KoalaWiki.Mem0;
 public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : BackgroundService
 {
     // Token限制：为系统提示、格式化和输出预留空间
-    private const int SystemPromptReservedTokens = 8000;  // system prompt 通常较长，增加预留
-    private const int FormattingReservedTokens = 2000;    // 格式化标签和标题
-    private const int OutputReservedTokens = 16384;       // LLM 输出空间（max_tokens）
-    private const int HistoryReservedTokens = 130000;     // Mem0检索和历史预留（超大！因为有graph store）
-    private const double CharsPerToken = 1.5;  // 极度保守的估算（中文+代码，1.5字符=1token）
+    private const int SystemPromptReservedTokens = 10000;  // system prompt 通常较长，增加预留
+    private const int FormattingReservedTokens = 5000;     // 格式化标签和标题
+    private const int OutputReservedTokens = 32768;        // LLM 输出空间（max_tokens），Grok-4可以输出更多
+    private const int HistoryReservedTokens = 200000;      // Mem0检索和历史预留（因为有graph store）
+    private const double CharsPerToken = 2.5;              // 代码通常2.5-3.5字符=1token
 
-    // GLM-4.6-FP8 的实际 context window
-    private const int GLM46ContextWindow = 202752;
+    // Grok-4-fast-reasoning 的实际 context window
+    private const int Grok4ContextWindow = 2000000;
 
     // 实际可用的最大token数量（扣除所有预留空间）
-    // Mem0会添加大量检索内容（尤其是graph store），所以用户消息必须极度保守
-    // 计算结果: 202752 - 8000 - 2000 - 16384 - 130000 = 46368
-    // 但我们再取25%安全边界: 202752 * 0.2 = 40550
+    // Mem0会添加大量检索内容（尤其是graph store）
+    // 计算结果: 2000000 - 10000 - 5000 - 32768 - 200000 = 1752232
+    // 取70%安全边界: 2000000 * 0.7 = 1400000
     private static int MaxAllowedInputTokens =>
         Math.Min(
-            GLM46ContextWindow - SystemPromptReservedTokens - FormattingReservedTokens - OutputReservedTokens - HistoryReservedTokens,
-            (int)(GLM46ContextWindow * 0.2) // 单次输入不超过20% context window！
+            Grok4ContextWindow - SystemPromptReservedTokens - FormattingReservedTokens - OutputReservedTokens - HistoryReservedTokens,
+            (int)(Grok4ContextWindow * 0.7) // 单次输入不超过70% context window（Grok-4很大，可以放宽）
         );
     
     /// <summary>
