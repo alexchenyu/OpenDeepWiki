@@ -46,7 +46,7 @@ public static class KernelFactory
                                              DecompressionMethods.None
                 })
                 {
-                    Timeout = TimeSpan.FromSeconds(240),
+                    Timeout = TimeSpan.FromMinutes(15), // 15分钟 = 900秒，适应超大仓库的依赖分析
                 });
         }
         else if (OpenAIOptions.ModelProvider.Equals("AzureOpenAI", StringComparison.OrdinalIgnoreCase))
@@ -60,7 +60,7 @@ public static class KernelFactory
                                              DecompressionMethods.None
                 })
             {
-                Timeout = TimeSpan.FromSeconds(240),
+                Timeout = TimeSpan.FromSeconds(900), // 15分钟，适应超大仓库的依赖分析
             });
         }
         else
