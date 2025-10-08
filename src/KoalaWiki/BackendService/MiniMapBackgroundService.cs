@@ -48,32 +48,35 @@ public sealed class MiniMapBackgroundService(IServiceProvider service) : Backgro
         {
             try
             {
-                // 每次循环创建新的 scope，避免长时间持有 DbContext 导致连接问题
-                using var scope = service.CreateScope();
-                var context = scope.ServiceProvider.GetRequiredService<IKoalaWikiContext>();
+                // 第一步：快速查询需要处理的仓库，然后立即释放 DbContext
+                Warehouse item;
+                string documentCatalogue;
+                string documentGitPath;
 
-                var existingMiniMapIds = await context.MiniMaps
-                    .Select(m => m.WarehouseId)
-                    .ToListAsync(stoppingToken);
-
-                // 查询需要生成知识图谱的仓库
-                var query = context.Warehouses
-                    .Where(w => w.Status == WarehouseStatus.Completed && !existingMiniMapIds.Contains(w.Id))
-                    .OrderBy(w => w.CreatedAt)
-                    .AsNoTracking();
-
-                var item = await query.FirstOrDefaultAsync(stoppingToken);
-                if (item == null)
+                using (var scope = service.CreateScope())
                 {
-                    await Task.Delay(10000, stoppingToken); // 等待10秒后重试
-                    continue;
-                }
+                    var context = scope.ServiceProvider.GetRequiredService<IKoalaWikiContext>();
 
-                Log.Logger.Information("开始生成知识图谱，共有 {Count} 个仓库需要处理",
-                    await query.CountAsync(cancellationToken: stoppingToken));
+                    var existingMiniMapIds = await context.MiniMaps
+                        .Select(m => m.WarehouseId)
+                        .ToListAsync(stoppingToken);
 
-                try
-                {
+                    // 查询需要生成知识图谱的仓库
+                    var query = context.Warehouses
+                        .Where(w => w.Status == WarehouseStatus.Completed && !existingMiniMapIds.Contains(w.Id))
+                        .OrderBy(w => w.CreatedAt)
+                        .AsNoTracking();
+
+                    item = await query.FirstOrDefaultAsync(stoppingToken);
+                    if (item == null)
+                    {
+                        await Task.Delay(10000, stoppingToken); // 等待10秒后重试
+                        continue;
+                    }
+
+                    Log.Logger.Information("开始生成知识图谱，共有 {Count} 个仓库需要处理",
+                        await query.CountAsync(cancellationToken: stoppingToken));
+
                     Log.Logger.Information("开始处理仓库 {WarehouseName}", item.Name);
 
                     var document = await context.Documents
@@ -81,20 +84,32 @@ public sealed class MiniMapBackgroundService(IServiceProvider service) : Backgro
                         .FirstOrDefaultAsync(stoppingToken);
 
                     // 为 MindMap 生成使用深度限制（3层），避免超大项目 token 超限
-                    // 例如：bitbake/bin/bitbake ✓ (3层), bitbake/lib/bb/tests/data.py ✗ (5层)
+                    documentCatalogue = document.GetCatalogueSmartFilterOptimized(maxDepth: 3);
+                    documentGitPath = document.GitPath;
+                } // scope 在这里释放，数据库连接关闭
+
+                try
+                {
+                    // 第二步：执行耗时的 AI 操作（此时没有持有 DbContext）
                     var miniMap = await MiniMapService.GenerateMiniMap(
-                        document.GetCatalogueSmartFilterOptimized(maxDepth: 3),
-                        item, document.GitPath);
+                        documentCatalogue,
+                        item,
+                        documentGitPath);
+
+                    // 第三步：保存结果（重新创建 scope）
                     if (miniMap != null)
                     {
-                        context.MiniMaps.Add(new MiniMap
+                        using var saveScope = service.CreateScope();
+                        var saveContext = saveScope.ServiceProvider.GetRequiredService<IKoalaWikiContext>();
+
+                        saveContext.MiniMaps.Add(new MiniMap
                         {
                             WarehouseId = item.Id,
                             Value = JsonSerializer.Serialize(miniMap, JsonSerializerOptions.Web),
                             CreatedAt = DateTime.UtcNow,
                             Id = Guid.NewGuid().ToString("N")
                         });
-                        await context.SaveChangesAsync(stoppingToken);
+                        await saveContext.SaveChangesAsync(stoppingToken);
                         Log.Logger.Information("仓库 {WarehouseName} 的知识图谱生成成功", item.Name);
                     }
                     else
@@ -104,13 +119,15 @@ public sealed class MiniMapBackgroundService(IServiceProvider service) : Backgro
                 }
                 catch (Exception e)
                 {
-                    Log.Logger.Error(e, "处理仓库 {WarehouseName} 时发生异常", item.Name);
+                    Log.Logger.Error(e, "处理仓库 {WarehouseName} 时发生异常：{Message}\n堆栈：{StackTrace}\n内部异常：{InnerException}",
+                        item.Name, e.Message, e.StackTrace, e.InnerException?.ToString() ?? "无");
                 }
             }
             catch (Exception e)
             {
                 await Task.Delay(10000, stoppingToken); // 等待10秒后重试
-                Log.Logger.Error(e, "MiniMapBackgroundService 执行异常"); // 改为完整异常信息
+                Log.Logger.Error(e, "MiniMapBackgroundService 执行异常：{Message}\n堆栈：{StackTrace}\n内部异常：{InnerException}",
+                    e.Message, e.StackTrace, e.InnerException?.ToString() ?? "无");
             }
         }
     }
