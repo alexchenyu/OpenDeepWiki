@@ -52,7 +52,7 @@ public abstract class DocumentProcessingStepBase<TInput, TOutput>(ILogger logger
         RetryStrategy = StepRetryStrategy.Smart,
         MaxRetryAttempts = 3,
         RetryDelay = TimeSpan.FromSeconds(5),
-        StepTimeout = TimeSpan.FromMinutes(30), // 增加到30分钟以支持超大仓库
+        StepTimeout = TimeSpan.FromHours(2), // 增加到2小时以支持超大仓库的依赖分析
         ContinueOnFailure = true
     };
     

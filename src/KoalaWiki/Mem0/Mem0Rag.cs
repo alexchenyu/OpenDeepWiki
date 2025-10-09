@@ -63,7 +63,7 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // 等待更长时间，确保数据库已启动
-        await Task.Delay(5000, stoppingToken);
+        await Task.Delay(15000, stoppingToken); // 增加到15秒
 
         if (OpenAIOptions.EnableMem0 == false)
         {
@@ -74,8 +74,8 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
         // 等待数据库连接就绪
         var dbReady = false;
         var retryCount = 0;
-        const int maxRetries = 30; // 增加重试次数
-        const int delaySeconds = 5; // 增加重试间隔
+        const int maxRetries = 60; // 增加重试次数到60次
+        const int delaySeconds = 10; // 增加重试间隔到10秒
 
         while (!dbReady && retryCount < maxRetries && !stoppingToken.IsCancellationRequested)
         {

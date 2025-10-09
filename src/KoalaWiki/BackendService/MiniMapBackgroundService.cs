@@ -13,13 +13,13 @@ public sealed class MiniMapBackgroundService(IServiceProvider service) : Backgro
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await Task.Delay(5000, stoppingToken); // 等待服务启动完成
+        await Task.Delay(15000, stoppingToken); // 等待服务启动完成（增加到15秒）
 
         // 等待数据库连接就绪
         var dbReady = false;
         var retryCount = 0;
-        const int maxRetries = 30; // 增加重试次数
-        const int delaySeconds = 5; // 增加重试间隔
+        const int maxRetries = 60; // 增加重试次数到60次
+        const int delaySeconds = 10; // 增加重试间隔到10秒
 
         while (!dbReady && retryCount < maxRetries && !stoppingToken.IsCancellationRequested)
         {

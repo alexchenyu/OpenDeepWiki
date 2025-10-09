@@ -80,7 +80,7 @@ public class StepExecutionConfig
     /// <summary>
     /// 步骤超时时间
     /// </summary>
-    public TimeSpan StepTimeout { get; set; } = TimeSpan.FromMinutes(30); // 增加到30分钟以支持超大仓库
+    public TimeSpan StepTimeout { get; set; } = TimeSpan.FromHours(2); // 增加到2小时以支持超大仓库的依赖分析
     
     /// <summary>
     /// 失败时是否继续执行后续步骤

@@ -7,9 +7,9 @@
     deploy:
       resources:
         limits:
-          memory: 32G  # 限制最大内存使用，防止OOM
+          memory: 80G  # 超大仓库需要更多内存处理依赖分析（服务器有251GB内存）
         reservations:
-          memory: 4G  # 预留最小内存
+          memory: 16G  # 预留最小内存
     networks:
       - koala_network
     depends_on:
@@ -27,7 +27,7 @@
       - LANGUAGE= # 设置生成语言默认为"中文", 英文可以填写 English 或 英文
       - ENDPOINT=http://us-agent.supermicro.com:4500/v1
       - DB_TYPE=postgres
-      - DB_CONNECTION_STRING=Host=postgres;Port=5432;Database=KoalaWiki;Username=postgres;Password=postgres;Timeout=180;Command Timeout=180;Maximum Pool Size=100;Minimum Pool Size=5;Connection Idle Lifetime=300;Keepalive=60
+      - DB_CONNECTION_STRING=Host=postgres;Port=5432;Database=KoalaWiki;Username=postgres;Password=postgres;Timeout=300;Command Timeout=300;Maximum Pool Size=200;Minimum Pool Size=20;Connection Idle Lifetime=600;Keepalive=60
       - UPDATE_INTERVAL=5 # 仓库增量更新间隔，单位天
       - EnableSmartFilter=true # 是否启用智能过滤，这可能影响AI得到仓库的文件目录
       - ENABLE_INCREMENTAL_UPDATE=true # 是否启用增量更新
@@ -61,9 +61,9 @@
     deploy:
       resources:
         limits:
-          memory: 16G  # 限制mem0内存使用
+          memory: 32G  # 增加mem0内存以支持超大仓库的向量检索
         reservations:
-          memory: 2G
+          memory: 4G
     networks:
       - koala_network
     volumes:
@@ -101,7 +101,13 @@
   postgres:
     image: ankane/pgvector:v0.5.1
     restart: on-failure
-    shm_size: "512mb" # Increase this if vacuuming fails with a "no space left on device" error
+    shm_size: "2gb" # 增加共享内存以支持超大仓库
+    deploy:
+      resources:
+        limits:
+          memory: 32G  # 大幅增加内存以加速向量检索和查询
+        reservations:
+          memory: 8G
     networks:
       - koala_network
     environment:
@@ -109,23 +115,26 @@
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=KoalaWiki
-      - POSTGRES_MAX_CONNECTIONS=200  # 增加最大连接数
-      - POSTGRES_SHARED_BUFFERS=256MB  # 增加共享缓冲区
+      - POSTGRES_MAX_CONNECTIONS=300  # 增加最大连接数以支持更多并发
+      - POSTGRES_SHARED_BUFFERS=4GB  # 大幅增加共享缓冲区
     command: >
       postgres
-      -c max_connections=200
-      -c shared_buffers=256MB
-      -c effective_cache_size=1GB
-      -c maintenance_work_mem=128MB
+      -c max_connections=300
+      -c shared_buffers=4GB
+      -c effective_cache_size=16GB
+      -c maintenance_work_mem=1GB
       -c checkpoint_completion_target=0.9
-      -c wal_buffers=16MB
-      -c default_statistics_target=100
+      -c wal_buffers=64MB
+      -c default_statistics_target=500
       -c random_page_cost=1.1
-      -c effective_io_concurrency=200
-      -c work_mem=8MB
+      -c effective_io_concurrency=300
+      -c work_mem=64MB
       -c huge_pages=off
-      -c min_wal_size=1GB
-      -c max_wal_size=4GB
+      -c min_wal_size=4GB
+      -c max_wal_size=16GB
+      -c max_worker_processes=16
+      -c max_parallel_workers_per_gather=8
+      -c max_parallel_workers=16
     healthcheck:
       test: ["CMD", "pg_isready", "-q", "-d", "postgres", "-U", "postgres"]
       interval: 5s
@@ -138,6 +147,12 @@
   neo4j:
     image: neo4j:5.26.4
     container_name: neo4j
+    deploy:
+      resources:
+        limits:
+          memory: 24G  # 大幅增加内存以支持超大仓库的复杂知识图谱
+        reservations:
+          memory: 8G
     networks:
       - koala_network
     healthcheck:
@@ -159,6 +174,9 @@
       - NEO4J_apoc_export_file_enabled=true
       - NEO4J_apoc_import_file_enabled=true
       - NEO4J_apoc_import_file_use__neo4j__config=true
+      - NEO4J_server_memory_heap_initial__size=4G
+      - NEO4J_server_memory_heap_max__size=12G
+      - NEO4J_server_memory_pagecache_size=8G
   
   aspire-dashboard:
     image: mcr.microsoft.com/dotnet/aspire-dashboard

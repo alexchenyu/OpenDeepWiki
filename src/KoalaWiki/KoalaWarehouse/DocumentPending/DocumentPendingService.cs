@@ -267,9 +267,9 @@ public partial class DocumentPendingService
                 {
                     // 创建新的取消令牌（每次重试都重新创建）
                     token?.Dispose();
-                    token = new CancellationTokenSource(TimeSpan.FromMinutes(30)); // 20分钟超时
+                    token = new CancellationTokenSource(TimeSpan.FromHours(2)); // 2小时超时（超大仓库依赖分析需要更长时间）
 
-                    Console.WriteLine($"开始处理文档 (尝试 {count}/{maxRetries + 1})，超时设置: 30分钟");
+                    Console.WriteLine($"开始处理文档 (尝试 {count}/{maxRetries + 1})，超时设置: 2小时");
 
                     try
                     {
