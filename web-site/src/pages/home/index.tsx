@@ -7,7 +7,6 @@ import { SearchBar } from '@/components/SearchBar'
 import { RepositoryCard } from '@/components/repository/RepositoryCard'
 import { RepositoryForm, type RepositoryFormValues } from '@/components/repository/RepositoryForm/index'
 import { Pagination } from '@/components/Pagination'
-import { SponsorsSection } from '@/components/SponsorsSection'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useRepositories } from '@/hooks/useRepositories'
@@ -226,31 +225,6 @@ export const HomePage = () => {
           </>
         )}
       </section>
-
-      {/* Sponsors Section */}
-      <SponsorsSection
-        className="bg-muted/30"
-      />
-
-      {/* Footer */}
-      <footer className="border-t">
-        <div className="container mx-auto px-4 py-8">
-          <div className="flex flex-col md:flex-row items-center justify-between text-sm text-muted-foreground">
-            <p>{t('footer.copyright', { year: new Date().getFullYear() })}</p>
-            <div className="flex items-center gap-6 mt-4 md:mt-0">
-              <a href="/privacy" className="hover:text-foreground transition-colors">
-                {t('footer.privacy')}
-              </a>
-              <a href="/terms" className="hover:text-foreground transition-colors">
-                {t('footer.terms')}
-              </a>
-              <a href="https://github.com/AIDotNet/OpenDeepWiki" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">
-                {t('footer.github')}
-              </a>
-            </div>
-          </div>
-        </div>
-      </footer>
 
       {/* Repository Form Modal */}
       <RepositoryForm
