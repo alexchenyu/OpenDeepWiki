@@ -5,10 +5,17 @@ using KoalaWiki.KoalaWarehouse.Extensions;
 using KoalaWiki.Mem0;
 using KoalaWiki.Services.Feishu.Feishu;
 using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.Extensions.Hosting;
 
 AppContext.SetSwitch("Microsoft.SemanticKernel.Experimental.GenAI.EnableOTelDiagnosticsSensitive", true);
 
 var builder = WebApplication.CreateBuilder(args);
+
+// 配置后台服务异常行为：继续运行而不是停止整个应用
+builder.Services.Configure<HostOptions>(options =>
+{
+    options.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore;
+});
 
 builder.AddServiceDefaults();
 

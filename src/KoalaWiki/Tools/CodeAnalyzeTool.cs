@@ -48,9 +48,9 @@ public class CodeAnalyzeTool(string gitPath)
         }
         catch (Exception ex)
         {
-            // 处理异常
-            Console.WriteLine($"Error reading file: {ex.Message}");
-            return $"Error reading file: {ex.Message}";
+            // 文件不存在或分析失败（正常情况，AI 可能查询不存在的文件）
+            Console.WriteLine($"[INFO] Code analysis failed: {ex.Message}");
+            return $"Code analysis failed: {ex.Message}";
         }
     }
 
@@ -77,9 +77,9 @@ public class CodeAnalyzeTool(string gitPath)
         }
         catch (Exception ex)
         {
-            // 处理异常
-            Console.WriteLine($"Error reading file: {ex.Message}");
-            return $"Error reading file: {ex.Message}";
+            // 文件不存在或分析失败（正常情况，AI 可能查询不存在的文件）
+            Console.WriteLine($"[INFO] Code analysis failed: {ex.Message}");
+            return $"Code analysis failed: {ex.Message}";
         }
     }
 }

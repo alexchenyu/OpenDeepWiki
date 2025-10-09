@@ -188,8 +188,8 @@ public static partial class GenerateThinkCatalogueService
         for (var streamAttempt = 1; streamAttempt <= maxStreamAttempts; streamAttempt++)
         {
             var timeout = streamAttempt == 1
-                ? TimeSpan.FromMinutes(20)
-                : TimeSpan.FromMinutes(5);
+                ? TimeSpan.FromMinutes(30) // 增加到30分钟以支持超大仓库
+                : TimeSpan.FromMinutes(10); // 重试时也给足够时间
 
             using var cts = new CancellationTokenSource(timeout);
 

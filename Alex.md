@@ -41,18 +41,20 @@ sudo rm -rf OpenDeepWiki
 git clone https://github.com/AIDotNet/OpenDeepWiki.git
 
 每次改完代码，我都这样重新从头开始运行：
-sudo make down
-docker stop opendeepwiki-koalawiki-1 aspire-dashboard mem0 opendeepwiki-postgres-1 neo4j opendeepwiki-mem0
-docker rm opendeepwiki-koalawiki-1 aspire-dashboard mem0 opendeepwiki-postgres-1 neo4j opendeepwiki-mem0
-docker rmi $(docker images --filter "dangling=true" -q --no-trunc)
-docker rmi crpi-j9ha7sxwhatgtvj4.cn-shenzhen.personal.cr.aliyuncs.com/koala-ai/koala-wiki mcr.microsoft.com/dotnet/aspire-dashboard neo4j:5.26.4 registry.cn-shenzhen.aliyuncs.com/tokengo/mem0 opendeepwiki-mem0 opendeepwiki_koalawiki
-sudo rm -rf repositories/openbmc
-sudo rm -rf data/ postgres_db/ neo4j_data/ repositories/
-cd web-site && npm run build && cd ..  # 构建前端
-docker-compose -f docker-compose-mem0.yml build --no-cache koalawiki
-# make build --no-cache
-rm mem0.log
-make dev-mem0 2>&1 | tee mem0.log
+
+# 方法1：使用自动化脚本（推荐，前台运行可看日志）
+./deploy-fix.sh
+
+# 方法2：手动执行（完整版，前台运行）
+make down-mem0                     # 停止所有服务
+docker stop opendeepwiki-koalawiki-1 aspire-dashboard mem0 opendeepwiki-postgres-1 neo4j 2>/dev/null || true
+docker rm opendeepwiki-koalawiki-1 aspire-dashboard mem0 opendeepwiki-postgres-1 neo4j 2>/dev/null || true
+docker rmi opendeepwiki_koalawiki opendeepwiki-koalawiki 2>/dev/null || true  # 删除旧的 koalawiki 镜像（关键！）
+sudo rm -rf data/ postgres_db/ neo4j_data/  # 清理数据库（可选）
+cd web-site && npm run build && cd ..       # 构建前端
+docker-compose -f docker-compose-mem0.yml build --no-cache koalawiki  # 强制重新构建
+rm -f mem0.log
+make dev-mem0 2>&1 | tee mem0.log  # 前台运行并保存日志（等同于 docker-compose up）
 
 
 # 只改了业务代码：

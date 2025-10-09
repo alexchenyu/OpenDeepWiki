@@ -27,7 +27,7 @@
       - LANGUAGE= # 设置生成语言默认为"中文", 英文可以填写 English 或 英文
       - ENDPOINT=http://us-agent.supermicro.com:4500/v1
       - DB_TYPE=postgres
-      - DB_CONNECTION_STRING=Host=postgres;Port=5432;Database=KoalaWiki;Username=postgres;Password=postgres
+      - DB_CONNECTION_STRING=Host=postgres;Port=5432;Database=KoalaWiki;Username=postgres;Password=postgres;Timeout=180;Command Timeout=180;Maximum Pool Size=100;Minimum Pool Size=5;Connection Idle Lifetime=300;Keepalive=60
       - UPDATE_INTERVAL=5 # 仓库增量更新间隔，单位天
       - EnableSmartFilter=true # 是否启用智能过滤，这可能影响AI得到仓库的文件目录
       - ENABLE_INCREMENTAL_UPDATE=true # 是否启用增量更新
@@ -101,7 +101,7 @@
   postgres:
     image: ankane/pgvector:v0.5.1
     restart: on-failure
-    shm_size: "128mb" # Increase this if vacuuming fails with a "no space left on device" error
+    shm_size: "512mb" # Increase this if vacuuming fails with a "no space left on device" error
     networks:
       - koala_network
     environment:
@@ -109,11 +109,29 @@
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=KoalaWiki
+      - POSTGRES_MAX_CONNECTIONS=200  # 增加最大连接数
+      - POSTGRES_SHARED_BUFFERS=256MB  # 增加共享缓冲区
+    command: >
+      postgres
+      -c max_connections=200
+      -c shared_buffers=256MB
+      -c effective_cache_size=1GB
+      -c maintenance_work_mem=128MB
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=16MB
+      -c default_statistics_target=100
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c work_mem=8MB
+      -c huge_pages=off
+      -c min_wal_size=1GB
+      -c max_wal_size=4GB
     healthcheck:
       test: ["CMD", "pg_isready", "-q", "-d", "postgres", "-U", "postgres"]
       interval: 5s
-      timeout: 5s
-      retries: 5
+      timeout: 10s
+      retries: 10
+      start_period: 30s
     volumes:
       - ./postgres_db:/var/lib/postgresql/data
 

@@ -37,31 +37,49 @@ public static class KernelFactory
 
         if (OpenAIOptions.ModelProvider.Equals("OpenAI", StringComparison.OrdinalIgnoreCase))
         {
-            kernelBuilder.AddOpenAIChatCompletion(model, new Uri(chatEndpoint), apiKey,
-                httpClient: new HttpClient(new KoalaHttpClientHandler()
-                {
-                    AutomaticDecompression = DecompressionMethods.GZip |
-                                             DecompressionMethods.Brotli |
-                                             DecompressionMethods.Deflate |
-                                             DecompressionMethods.None
-                })
-                {
-                    Timeout = TimeSpan.FromMinutes(15), // 15分钟 = 900秒，适应超大仓库的依赖分析
-                });
+            // 创建自定义 HttpClient，设置无限超时（实际由 CancellationToken 控制）
+            var handler = new KoalaHttpClientHandler()
+            {
+                AutomaticDecompression = DecompressionMethods.GZip |
+                                         DecompressionMethods.Brotli |
+                                         DecompressionMethods.Deflate |
+                                         DecompressionMethods.None
+            };
+
+            var httpClient = new HttpClient(handler)
+            {
+                Timeout = Timeout.InfiniteTimeSpan // 使用无限超时，由调用方的 CancellationToken 控制
+            };
+
+            // 使用 Semantic Kernel 的扩展方法，传入自定义 HttpClient
+            kernelBuilder.AddOpenAIChatCompletion(
+                modelId: model,
+                endpoint: new Uri(chatEndpoint),
+                apiKey: apiKey,
+                httpClient: httpClient);
         }
         else if (OpenAIOptions.ModelProvider.Equals("AzureOpenAI", StringComparison.OrdinalIgnoreCase))
         {
-            kernelBuilder.AddAzureOpenAIChatCompletion(model, chatEndpoint, apiKey, httpClient: new HttpClient(
-                new KoalaHttpClientHandler()
-                {
-                    AutomaticDecompression = DecompressionMethods.GZip |
-                                             DecompressionMethods.Brotli |
-                                             DecompressionMethods.Deflate |
-                                             DecompressionMethods.None
-                })
+            // 创建自定义 HttpClient，设置无限超时（实际由 CancellationToken 控制）
+            var handler = new KoalaHttpClientHandler()
             {
-                Timeout = TimeSpan.FromSeconds(900), // 15分钟，适应超大仓库的依赖分析
-            });
+                AutomaticDecompression = DecompressionMethods.GZip |
+                                         DecompressionMethods.Brotli |
+                                         DecompressionMethods.Deflate |
+                                         DecompressionMethods.None
+            };
+
+            var httpClient = new HttpClient(handler)
+            {
+                Timeout = Timeout.InfiniteTimeSpan // 使用无限超时，由调用方的 CancellationToken 控制
+            };
+
+            // 使用 Semantic Kernel 的扩展方法，传入自定义 HttpClient
+            kernelBuilder.AddAzureOpenAIChatCompletion(
+                deploymentName: model,
+                endpoint: chatEndpoint,
+                apiKey: apiKey,
+                httpClient: httpClient);
         }
         else
         {

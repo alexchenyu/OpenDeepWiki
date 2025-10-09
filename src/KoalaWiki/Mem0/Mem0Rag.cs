@@ -74,7 +74,8 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
         // 等待数据库连接就绪
         var dbReady = false;
         var retryCount = 0;
-        const int maxRetries = 10;
+        const int maxRetries = 30; // 增加重试次数
+        const int delaySeconds = 5; // 增加重试间隔
 
         while (!dbReady && retryCount < maxRetries && !stoppingToken.IsCancellationRequested)
         {
@@ -90,7 +91,7 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
             {
                 retryCount++;
                 logger.LogWarning(ex, "Mem0Rag 服务：等待数据库连接就绪 (尝试 {RetryCount}/{MaxRetries})", retryCount, maxRetries);
-                await Task.Delay(3000, stoppingToken); // 等待3秒后重试
+                await Task.Delay(TimeSpan.FromSeconds(delaySeconds), stoppingToken); // 等待5秒后重试
             }
         }
 

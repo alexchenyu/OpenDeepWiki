@@ -18,7 +18,8 @@ public sealed class MiniMapBackgroundService(IServiceProvider service) : Backgro
         // 等待数据库连接就绪
         var dbReady = false;
         var retryCount = 0;
-        const int maxRetries = 10;
+        const int maxRetries = 30; // 增加重试次数
+        const int delaySeconds = 5; // 增加重试间隔
 
         while (!dbReady && retryCount < maxRetries && !stoppingToken.IsCancellationRequested)
         {
@@ -34,7 +35,7 @@ public sealed class MiniMapBackgroundService(IServiceProvider service) : Backgro
             {
                 retryCount++;
                 Log.Logger.Warning(ex, "MiniMapBackgroundService：等待数据库连接就绪 (尝试 {RetryCount}/{MaxRetries})", retryCount, maxRetries);
-                await Task.Delay(3000, stoppingToken); // 等待3秒后重试
+                await Task.Delay(TimeSpan.FromSeconds(delaySeconds), stoppingToken); // 等待5秒后重试
             }
         }
 

@@ -95,7 +95,7 @@ public class StepConfiguration
     public bool IsOptional { get; set; } = false;
     public bool IsEnabled { get; set; } = true;
     public RetryPolicy RetryPolicy { get; set; } = new();
-    public TimeSpan Timeout { get; set; } = TimeSpan.FromMinutes(10);
+    public TimeSpan Timeout { get; set; } = TimeSpan.FromMinutes(30); // 增加到30分钟以支持超大仓库
     public Dictionary<string, object> Parameters { get; set; } = new();
 }
 

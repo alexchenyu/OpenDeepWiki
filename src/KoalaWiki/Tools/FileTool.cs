@@ -75,9 +75,9 @@ public class FileTool(string gitPath, List<string>? files)
         }
         catch (Exception ex)
         {
-            // 处理异常
-            Console.WriteLine($"Error reading file: {ex.Message}");
-            return $"Error reading file: {ex.Message}";
+            // 文件不存在或无法读取（正常情况，AI 可能查询不存在的文件）
+            Console.WriteLine($"[INFO] File not accessible: {ex.Message}");
+            return $"File not accessible: {ex.Message}";
         }
     }
 
@@ -570,9 +570,9 @@ public class FileTool(string gitPath, List<string>? files)
         }
         catch (Exception ex)
         {
-            // 处理异常
-            Console.WriteLine($"Error reading file: {ex.Message}");
-            return $"Error reading file: {ex.Message}";
+            // 文件不存在或无法读取（正常情况，AI 可能查询不存在的文件）
+            Console.WriteLine($"[INFO] File not accessible: {ex.Message}");
+            return $"File not accessible: {ex.Message}";
         }
     }
 
