@@ -58,8 +58,15 @@ public sealed class MiniMapBackgroundService(IServiceProvider service) : Backgro
                 {
                     var context = scope.ServiceProvider.GetRequiredService<IKoalaWikiContext>();
 
+                    // 设置命令超时为10分钟，避免在大数据量时读取超时
+                    if (context is DbContext db)
+                    {
+                        db.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
+                    }
+
                     var existingMiniMapIds = await context.MiniMaps
                         .Select(m => m.WarehouseId)
+                        .AsNoTracking() // 不跟踪查询，提高性能
                         .ToListAsync(stoppingToken);
 
                     // 查询需要生成知识图谱的仓库
@@ -82,6 +89,7 @@ public sealed class MiniMapBackgroundService(IServiceProvider service) : Backgro
 
                     var document = await context.Documents
                         .Where(d => d.WarehouseId == item.Id)
+                        .AsNoTracking() // 不跟踪查询，提高性能
                         .FirstOrDefaultAsync(stoppingToken);
 
                     // 为 MindMap 生成使用深度限制（3层），避免超大项目 token 超限

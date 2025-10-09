@@ -109,8 +109,15 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
                 await using var scope = service.CreateAsyncScope();
                 var dbContext = scope.ServiceProvider.GetService<IKoalaWikiContext>();
 
+                // 设置命令超时为10分钟，避免在大数据量时读取超时
+                if (dbContext is DbContext db)
+                {
+                    db.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
+                }
+
                 var warehouse = await dbContext!.Warehouses
                     .Where(x => x.Status == WarehouseStatus.Completed && x.IsEmbedded == false)
+                    .AsNoTracking() // 不跟踪查询，提高性能
                     .FirstOrDefaultAsync(stoppingToken);
 
             if (warehouse == null)
@@ -123,6 +130,7 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
 
             var documents = await dbContext.Documents
                 .Where(x => x.WarehouseId == warehouse.Id)
+                .AsNoTracking() // 不跟踪查询，提高性能
                 .FirstOrDefaultAsync(stoppingToken);
 
             var files = DocumentsHelper.GetCatalogueFiles(documents.GitPath);

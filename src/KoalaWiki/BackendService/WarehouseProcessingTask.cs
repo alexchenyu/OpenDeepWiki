@@ -34,6 +34,12 @@ public partial class WarehouseProcessingTask(IServiceProvider service, ILogger<W
 
                 var dbContext = scope.ServiceProvider.GetService<IKoalaWikiContext>();
 
+                // 设置命令超时为10分钟，避免在大数据量时读取超时
+                if (dbContext is DbContext db)
+                {
+                    db.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
+                }
+
                 // 读取现有的仓库状态=2，并且启用了同步，并且处理时间满足一星期
                 var warehouse = await dbContext!.Warehouses
                     .Where(x => x.Status == WarehouseStatus.Completed && x.EnableSync)

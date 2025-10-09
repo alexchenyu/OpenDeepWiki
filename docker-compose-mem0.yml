@@ -135,6 +135,11 @@
       -c max_worker_processes=16
       -c max_parallel_workers_per_gather=8
       -c max_parallel_workers=16
+      -c statement_timeout=600000
+      -c idle_in_transaction_session_timeout=600000
+      -c tcp_keepalives_idle=60
+      -c tcp_keepalives_interval=10
+      -c tcp_keepalives_count=6
     healthcheck:
       test: ["CMD", "pg_isready", "-q", "-d", "postgres", "-U", "postgres"]
       interval: 5s

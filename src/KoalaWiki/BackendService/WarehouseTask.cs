@@ -26,6 +26,13 @@ public class WarehouseTask(
         await using var scope = service.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetService<IKoalaWikiContext>();
         var documentsService = scope.ServiceProvider.GetService<DocumentsService>();
+
+        // 设置命令超时为10分钟，避免在大数据量时读取超时
+        if (dbContext is DbContext db)
+        {
+            db.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
+        }
+
         while (!stoppingToken.IsCancellationRequested)
         {
             var value = await dbContext!.Warehouses

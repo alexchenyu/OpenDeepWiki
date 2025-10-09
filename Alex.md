@@ -46,7 +46,7 @@ git clone https://github.com/AIDotNet/OpenDeepWiki.git
 ./deploy-fix.sh
 
 # 方法2：手动执行（完整版，前台运行）
-make down-mem0                     # 停止所有服务
+sudo make down-mem0                     # 停止所有服务
 docker stop opendeepwiki-koalawiki-1 aspire-dashboard mem0 opendeepwiki-postgres-1 neo4j 2>/dev/null || true
 docker rm opendeepwiki-koalawiki-1 aspire-dashboard mem0 opendeepwiki-postgres-1 neo4j 2>/dev/null || true
 docker rmi opendeepwiki_koalawiki opendeepwiki-koalawiki 2>/dev/null || true  # 删除旧的 koalawiki 镜像（关键！）
