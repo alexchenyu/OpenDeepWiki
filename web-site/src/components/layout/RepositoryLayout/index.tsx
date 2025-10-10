@@ -12,7 +12,6 @@ import { warehouseService } from '@/services/warehouse.service'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/useAuth'
 import {
-  Github,
   Home,
   Download,
   ChevronLeft,
@@ -259,14 +258,6 @@ export const RepositoryLayout: React.FC<RepositoryLayoutProps> = ({ children }) 
               )}
             </Button>
             <ThemeToggle />
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 px-2"
-              onClick={() => window.open(`https://github.com/${owner}/${name}`, '_blank')}
-            >
-              <Github className="h-4 w-4" />
-            </Button>
           </div>
         </div>
       </header>
