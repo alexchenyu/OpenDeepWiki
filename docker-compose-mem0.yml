@@ -27,7 +27,7 @@
       - LANGUAGE= # 设置生成语言默认为"中文", 英文可以填写 English 或 英文
       - ENDPOINT=http://us-agent.supermicro.com:4500/v1
       - DB_TYPE=postgres
-      - DB_CONNECTION_STRING=Host=postgres;Port=5432;Database=KoalaWiki;Username=postgres;Password=postgres;Timeout=300;Command Timeout=300;Maximum Pool Size=200;Minimum Pool Size=20;Connection Idle Lifetime=600;Keepalive=60
+      - DB_CONNECTION_STRING=Host=postgres;Port=5432;Database=KoalaWiki;Username=postgres;Password=postgres;Timeout=300;Command Timeout=300;Maximum Pool Size=300;Minimum Pool Size=10;Connection Idle Lifetime=300;Keepalive=30;Connection Pruning Interval=10;Pooling=true;Enlist=false
       - UPDATE_INTERVAL=5 # 仓库增量更新间隔，单位天
       - EnableSmartFilter=true # 是否启用智能过滤，这可能影响AI得到仓库的文件目录
       - ENABLE_INCREMENTAL_UPDATE=true # 是否启用增量更新

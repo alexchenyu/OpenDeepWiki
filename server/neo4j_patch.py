@@ -36,6 +36,7 @@ def sanitize_relationship_type(relationship_type: str) -> str:
     sanitized = sanitized.replace('\\', '_')
     sanitized = sanitized.replace(' ', '_')
     sanitized = sanitized.replace('-', '_')
+    sanitized = sanitized.replace('.', '_')  # 替换点号（例如 d.expand -> d_expand）
 
     # 移除连续的下划线
     while '__' in sanitized:
