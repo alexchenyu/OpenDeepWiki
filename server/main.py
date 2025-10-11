@@ -56,8 +56,9 @@ EMBEDDING_MODEL_DIMS = int(os.environ.get("EMBEDDING_MODEL_DIMS", "4096"))
 GRAPH_STORE_ENABLED = os.environ.get("GRAPH_STORE_ENABLED", "true").lower() == "true"
 
 # 构建 LLM 配置
-# 注意：mem0 的 OpenAIConfig 不支持 base_url 参数
+# 注意：mem0 的 OpenAIConfig 不支持 base_url 和 timeout 参数
 # 需要通过环境变量让 OpenAI SDK 自动读取
+# timeout 通过 OpenAI SDK 的环境变量 OPENAI_TIMEOUT 设置
 llm_config = {
     "api_key": OPENAI_API_KEY,
     "temperature": 0.2,

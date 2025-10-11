@@ -46,15 +46,22 @@ git clone https://github.com/AIDotNet/OpenDeepWiki.git
 ./deploy-fix.sh
 
 # 方法2：手动执行（完整版，前台运行）
-sudo make down-mem0                     # 停止所有服务
-docker stop opendeepwiki-koalawiki-1 aspire-dashboard mem0 opendeepwiki-postgres-1 neo4j 2>/dev/null || true
-docker rm opendeepwiki-koalawiki-1 aspire-dashboard mem0 opendeepwiki-postgres-1 neo4j 2>/dev/null || true
-docker rmi opendeepwiki_koalawiki opendeepwiki-koalawiki 2>/dev/null || true  # 删除旧的 koalawiki 镜像（关键！）
-sudo rm -rf data/ postgres_db/ neo4j_data/  # 清理数据库（可选）
-cd web-site && npm run build && cd ..       # 构建前端
-docker-compose -f docker-compose-mem0.yml build --no-cache koalawiki  # 强制重新构建
-rm -f mem0.log
-make dev-mem0 2>&1 | tee mem0.log  # 前台运行并保存日志（等同于 docker-compose up）
+COMPOSE="docker compose"
+sudo make down-mem0                   # 停止所有服务
+sudo $COMPOSE -f docker-compose-mem0.yml down --volumes --remove-orphans
+sudo $COMPOSE -f docker-compose-mem0.yml build --no-cache mem0 koalawiki
+rm mem0.log
+make dev-mem0 2>&1 | tee mem0.log
+
+# sudo make down-mem0 
+# sudo docker compose -f docker-compose-mem0.yml down
+# docker stop opendeepwiki-koalawiki-1 aspire-dashboard mem0 opendeepwiki-postgres-1 neo4j 2>/dev/null || true
+# docker rm opendeepwiki-koalawiki-1 aspire-dashboard mem0 opendeepwiki-postgres-1 neo4j 2>/dev/null || true
+# docker rmi opendeepwiki_koalawiki opendeepwiki-koalawiki opendeepwiki_mem0 2>/dev/null || true  # 删除旧的 koalawiki 镜像（关键！）
+# # sudo rm -rf data/ postgres_db/ neo4j_data/  # 清理数据库（可选）
+# cd web-site && npm run build && cd ..       # 构建前端
+# docker compose -f docker-compose-mem0.yml build --no-cache koalawiki mem0 # 强制重新构建
+# make dev-mem0 2>&1 | tee mem0.log  # 前台运行并保存日志（等同于 docker-compose up）
 
 
 # 只改了业务代码：

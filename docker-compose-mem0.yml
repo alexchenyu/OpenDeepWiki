@@ -82,6 +82,7 @@
       # 通过 litellm 统一访问所有模型（litellm 需要配置 drop_params=true）
       - OPENAI_API_KEY=sk-a6IwJQ3_dJCANSipFXBcnw
       - OPENAI_BASE_URL=http://us-agent.supermicro.com:4500/v1
+      - OPENAI_TIMEOUT=600  # OpenAI SDK 超时设置（秒），支持大规模图存储操作
       - OPENAI_CHAT_MODEL=grok-4-fast-non-reasoning
       - OPENAI_EMBEDDING_MODEL=nvidia_embed
       - EMBEDDING_MODEL_DIMS=4096

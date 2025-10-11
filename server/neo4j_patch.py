@@ -6,7 +6,8 @@ Neo4j 5.x 不允许关系类型中包含冒号，需要替换为下划线。
 """
 
 import logging
-from typing import Any, Dict, List
+import re
+from typing import Any, Dict, List, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -28,25 +29,27 @@ def sanitize_relationship_type(relationship_type: str) -> str:
     if not relationship_type:
         return relationship_type
 
-    # 替换冒号为下划线
-    sanitized = relationship_type.replace(':', '_')
+    # 将常见非法字符替换为下划线
+    sanitized = relationship_type
+    for bad in (':', '/', '\\', ' ', '-', '.'):
+        sanitized = sanitized.replace(bad, '_')
 
-    # 替换其他可能有问题的字符
-    sanitized = sanitized.replace('/', '_')
-    sanitized = sanitized.replace('\\', '_')
-    sanitized = sanitized.replace(' ', '_')
-    sanitized = sanitized.replace('-', '_')
-    sanitized = sanitized.replace('.', '_')  # 替换点号（例如 d.expand -> d_expand）
+    # 将仍然存在的非法字符替换掉
+    sanitized = re.sub(r'[^0-9A-Za-z_]', '_', sanitized)
 
-    # 移除连续的下划线
-    while '__' in sanitized:
-        sanitized = sanitized.replace('__', '_')
+    # 折叠多余的下划线并移除首尾下划线
+    sanitized = re.sub(r'_+', '_', sanitized).strip('_')
 
-    # 移除首尾的下划线
-    sanitized = sanitized.strip('_')
+    # Neo4j 要求关系类型以字母开头；如果不是，则添加前缀
+    if sanitized and not sanitized[0].isalpha():
+        sanitized = f'REL_{sanitized}'
+
+    # 如果结果为空，提供一个安全的占位
+    if not sanitized:
+        sanitized = 'REL_TYPE'
 
     if sanitized != relationship_type:
-        logger.debug(f"Sanitized relationship type: '{relationship_type}' -> '{sanitized}'")
+        logger.info(f"[NEO4J_PATCH] Sanitized relationship type: '{relationship_type}' -> '{sanitized}'")
 
     return sanitized
 
@@ -64,9 +67,19 @@ def sanitize_graph_data(data: Any) -> Any:
     if isinstance(data, dict):
         # 处理字典
         result = {}
+        relationship_keys = {
+            'relationship',
+            'relation',
+            'rel_type',
+            'relation_type',
+            'type',
+            'relationship_type',
+            'entity_type',
+        }
+
         for key, value in data.items():
             # 如果是关系类型相关的键
-            if key in ['relationship', 'relation', 'rel_type', 'type', 'relationship_type']:
+            if key in relationship_keys:
                 if isinstance(value, str):
                     result[key] = sanitize_relationship_type(value)
                 else:
@@ -106,8 +119,22 @@ def patch_mem0_graph():
             # 清理数据中的关系类型
             sanitized_data = sanitize_graph_data(data)
 
-            # 调用原始方法
-            return original_add(self, sanitized_data, filters)
+            # 临时包装 graph.query，确保 Cypher 在发送前被清理
+            original_query: Optional[Callable] = None
+            if hasattr(self, "graph") and hasattr(self.graph, "query"):
+                original_query = self.graph.query
+
+                def wrapped_query(query: str, params: Dict = None):
+                    sanitized_query = sanitize_cypher_query(query)
+                    return original_query(sanitized_query, params)
+
+                self.graph.query = wrapped_query  # type: ignore[attr-defined]
+
+            try:
+                return original_add(self, sanitized_data, filters)
+            finally:
+                if original_query is not None:
+                    self.graph.query = original_query  # type: ignore[attr-defined]
 
         # 替换方法
         GraphMemory.add = patched_add
@@ -131,22 +158,10 @@ def patch_neo4j_queries():
 
         def patched_query(self, query: str, params: Dict = None):
             """修补后的 query 方法，会清理 Cypher 查询中的关系类型"""
-            # 使用正则表达式查找并替换关系类型中的冒号
-            import re
-
-            # 匹配 -[r:type]-> 或 -[:type]-> 模式
-            def replace_relationship_type(match):
-                full_match = match.group(0)
-                rel_type = match.group(1)
-                sanitized = sanitize_relationship_type(rel_type)
-                return full_match.replace(rel_type, sanitized)
-
-            # 查找所有关系类型并替换
-            pattern = r'-\[(?:r)?:([^\]]+)\]->'
-            sanitized_query = re.sub(pattern, replace_relationship_type, query)
+            sanitized_query = sanitize_cypher_query(query)
 
             if sanitized_query != query:
-                logger.debug(f"Sanitized Cypher query")
+                logger.info(f"[NEO4J_PATCH] Sanitized Cypher query:\nOriginal: {query}\nSanitized: {sanitized_query}")
 
             # 调用原始方法
             return original_query(self, sanitized_query, params)
@@ -167,3 +182,46 @@ def apply_all_patches():
     patch_mem0_graph()
     patch_neo4j_queries()
     logger.info("Neo4j 5.x compatibility patches applied")
+
+
+# ---------------------------------------------------------------------------
+# 内部辅助函数
+# ---------------------------------------------------------------------------
+
+_BRACKET_PATTERN = re.compile(r'-\[(.*?)\]', re.DOTALL)
+_REL_TYPE_PATTERN = re.compile(r':([A-Za-z0-9_.\\-`]+)')
+_REL_TYPE_FALLBACK_PATTERN = re.compile(r':([^\]\s\{]+)')
+
+
+def sanitize_cypher_query(query: str) -> str:
+    """
+    清理 Cypher 查询字符串中的关系类型定义。
+    该函数与 patched GraphMemory / Neo4jGraph 共用，确保所有执行路径都能被清理。
+    """
+
+    def sanitize_bracket_content(bracket_match: re.Match) -> str:
+        """清理方括号内的关系类型定义，保留属性、权重等其余内容"""
+        content = bracket_match.group(1)
+
+        def repl_rel_type(type_match: re.Match) -> str:
+            rel_type = type_match.group(1)
+            stripped = rel_type.strip('`')
+            sanitized = sanitize_relationship_type(stripped)
+            if sanitized != stripped:
+                logger.info(f"[NEO4J_PATCH] Sanitized relationship type in query: '{rel_type}' -> '{sanitized}'")
+            return f':{sanitized}'
+
+        sanitized_content = _REL_TYPE_PATTERN.sub(repl_rel_type, content)
+        return f'-[{sanitized_content}]'
+
+    sanitized_query = _BRACKET_PATTERN.sub(sanitize_bracket_content, query)
+
+    def fallback_repl(match: re.Match) -> str:
+        rel_type = match.group(1)
+        sanitized = sanitize_relationship_type(rel_type.strip('`'))
+        if sanitized != rel_type:
+            logger.info(f"[NEO4J_PATCH] Fallback sanitized relationship: '{rel_type}' -> '{sanitized}'")
+        return f':{sanitized}'
+
+    sanitized_query = _REL_TYPE_FALLBACK_PATTERN.sub(fallback_repl, sanitized_query)
+    return sanitized_query

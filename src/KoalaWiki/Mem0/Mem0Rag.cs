@@ -1,10 +1,13 @@
-﻿using System.Net.Http.Headers;
+﻿using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text.RegularExpressions;
 using KoalaWiki.Core.Extensions;
 using KoalaWiki.Domains.Warehouse;
 using KoalaWiki.Infrastructure;
 using KoalaWiki.Prompts;
-using Mem0.NET;
 using Microsoft.EntityFrameworkCore;
+using Newtonsoft.Json;
+using System.Text;
 
 namespace KoalaWiki.Mem0;
 
@@ -29,6 +32,13 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
             Grok4ContextWindow - SystemPromptReservedTokens - FormattingReservedTokens - OutputReservedTokens - HistoryReservedTokens,
             (int)(Grok4ContextWindow * 0.7) // 单次输入不超过70% context window（Grok-4很大，可以放宽）
         );
+
+    private readonly HttpClient _mem0HttpClient = CreateMem0HttpClient();
+    private static readonly JsonSerializerSettings Mem0JsonSettings = new()
+    {
+        NullValueHandling = NullValueHandling.Ignore,
+        DateTimeZoneHandling = DateTimeZoneHandling.Utc
+    };
     
     /// <summary>
     /// 估算文本的token数量
@@ -60,6 +70,161 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
             
         return content.Substring(0, allowedChars) + "\n... (内容已截断)";
     }
+
+    private static string SanitizeGraphIdentifier(string? value, string fallback)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return fallback;
+
+        var sanitized = Regex.Replace(value, @"[:/\\\s\-.]", "_");
+        sanitized = Regex.Replace(sanitized, @"[^0-9A-Za-z_]", "_");
+        sanitized = Regex.Replace(sanitized, "_+", "_").Trim('_');
+
+        if (string.IsNullOrEmpty(sanitized))
+            sanitized = fallback;
+
+        if (!char.IsLetter(sanitized[0]))
+            sanitized = $"REL_{sanitized}";
+
+        return sanitized;
+    }
+
+    private static string EscapeAttributeValue(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return string.Empty;
+        return value.Replace("\"", "&quot;");
+    }
+
+    private sealed record DependentFileInfo(
+        string DocumentFileItemId,
+        string Address,
+        string? Name,
+        string Id,
+        DateTime CreatedAt);
+
+    private static List<Dictionary<string, object?>> BuildSanitizedReferences(
+        IEnumerable<DependentFileInfo> references,
+        string documentId)
+    {
+        var result = new List<Dictionary<string, object?>>();
+        foreach (var reference in references)
+        {
+            var originalName = reference.Name ?? string.Empty;
+            var fallback = $"reference_{documentId}_{reference.Id}";
+            var sanitizedName = SanitizeGraphIdentifier(originalName, fallback);
+
+            result.Add(new Dictionary<string, object?>
+            {
+                ["documentFileItemId"] = reference.DocumentFileItemId,
+                ["address"] = reference.Address,
+                ["name"] = sanitizedName,
+                ["originalName"] = originalName,
+                ["id"] = reference.Id,
+                ["createdAt"] = reference.CreatedAt
+            });
+        }
+
+        return result;
+    }
+
+    private static HttpClient CreateMem0HttpClient()
+    {
+        if (string.IsNullOrWhiteSpace(OpenAIOptions.Mem0Endpoint))
+        {
+            throw new InvalidOperationException("Mem0 endpoint is not configured.");
+        }
+
+        var baseAddress = OpenAIOptions.Mem0Endpoint.EndsWith("/")
+            ? new Uri(OpenAIOptions.Mem0Endpoint)
+            : new Uri(OpenAIOptions.Mem0Endpoint + "/");
+
+        var client = new HttpClient
+        {
+            BaseAddress = baseAddress,
+            Timeout = TimeSpan.FromMinutes(10)
+        };
+
+        if (!string.IsNullOrWhiteSpace(OpenAIOptions.Mem0ApiKey))
+        {
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", OpenAIOptions.Mem0ApiKey);
+        }
+
+        client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("KoalaWiki", "1.0"));
+        client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        return client;
+    }
+
+    private sealed class Mem0MessagePayload
+    {
+        [JsonProperty("role")]
+        public string Role { get; init; } = string.Empty;
+
+        [JsonProperty("content")]
+        public string Content { get; init; } = string.Empty;
+    }
+
+    private sealed class Mem0MemoryCreatePayload
+    {
+        [JsonProperty("messages")]
+        public List<Mem0MessagePayload> Messages { get; init; } = new();
+
+        [JsonProperty("user_id")]
+        public string? UserId { get; init; }
+
+        [JsonProperty("agent_id")]
+        public string? AgentId { get; init; }
+
+        [JsonProperty("run_id")]
+        public string? RunId { get; init; }
+
+        [JsonProperty("metadata")]
+        public object? Metadata { get; init; }
+
+        [JsonProperty("memory_type")]
+        public string? MemoryType { get; init; }
+
+        [JsonProperty("prompt")]
+        public string? Prompt { get; init; }
+    }
+
+    private async Task SendMem0MemoryAsync(
+        List<Mem0MessagePayload> messages,
+        string userId,
+        object? metadata,
+        CancellationToken cancellationToken,
+        string? agentId = null,
+        string? runId = null,
+        string? prompt = null)
+    {
+        var payload = new Mem0MemoryCreatePayload
+        {
+            Messages = messages,
+            UserId = userId,
+            AgentId = agentId,
+            RunId = runId,
+            Metadata = metadata,
+            MemoryType = "procedural_memory",
+            Prompt = prompt
+        };
+
+        var json = JsonConvert.SerializeObject(payload, Mem0JsonSettings);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "memories/")
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json")
+        };
+
+        using var response = await _mem0HttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            logger.LogError("Mem0 add failed with status {StatusCode}. Response: {Body}", (int)response.StatusCode, body);
+            response.EnsureSuccessStatusCode();
+        }
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // 等待更长时间，确保数据库已启动
@@ -135,16 +300,6 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
 
             var files = DocumentsHelper.GetCatalogueFiles(documents.GitPath);
 
-            var client = new Mem0Client(OpenAIOptions.Mem0ApiKey, OpenAIOptions.Mem0Endpoint, null, null,
-                new HttpClient()
-                {
-                    Timeout = TimeSpan.FromMinutes(600),
-                    DefaultRequestHeaders =
-                    {
-                        UserAgent = { new ProductInfoHeaderValue("KoalaWiki", "1.0") }
-                    }
-                });
-
             // 为每次处理生成唯一的session ID，避免历史累积
             var sessionId = $"{warehouse.Id}_{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid():N}";
             logger.LogInformation("开始处理 warehouse {WarehouseId}，使用唯一session: {SessionId}",
@@ -201,44 +356,60 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
                         // 获取依赖文件
                         var dependentFiles = await innerDbContext.DocumentFileItemSources
                             .Where(x => x.DocumentFileItemId == content.Id)
-                            .Select(x => new
-                            {
+                            .Select(x => new DependentFileInfo(
                                 x.DocumentFileItemId,
                                 x.Address,
                                 x.Name,
                                 x.Id,
-                                x.CreatedAt
-                            })
+                                x.CreatedAt))
                             .ToListAsync(cancellationToken: ct);
 
-                        // 处理目录内容
-                        await client.AddAsync([
-                                new Message
-                                {
-                                    Role = "system",
-                                    Content = await PromptContext.Mem0(nameof(PromptConstant.Mem0.DocsSystem),
-                                        new KernelArguments(), OpenAIOptions.ChatModel)
-                                },
-                                new Message
-                                {
-                                    Role = "user",
-                                    Content = $"""
-                                               # {catalog.Name}
-                                               <file name="{catalog.Url}">
-                                               {content.Content}
-                                               </file>
-                                               """
-                                }
-                            ], userId: sessionId, metadata: new Dictionary<string, object>()
+                        var sanitizedReferences = BuildSanitizedReferences(dependentFiles, documents.Id);
+                        var originalFileName = string.IsNullOrWhiteSpace(catalog.Url)
+                            ? (string.IsNullOrWhiteSpace(catalog.Name) ? catalog.Id : catalog.Name)
+                            : catalog.Url;
+                        var sanitizedFileName = SanitizeGraphIdentifier(
+                            originalFileName,
+                            $"catalog_{catalog.Id}");
+                        var sanitizedCatalogName = SanitizeGraphIdentifier(
+                            catalog.Name,
+                            $"catalog_{catalog.Id}");
+                        var sanitizedCatalogUrl = SanitizeGraphIdentifier(
+                            catalog.Url,
+                            sanitizedFileName);
+                        var metadata = new Dictionary<string, object>
+                        {
+                            ["id"] = catalog.Id,
+                            ["name"] = sanitizedCatalogName,
+                            ["displayName"] = catalog.Name ?? string.Empty,
+                            ["url"] = sanitizedCatalogUrl,
+                            ["originalUrl"] = originalFileName,
+                            ["documentId"] = documents.Id,
+                            ["type"] = "docs",
+                            ["reference"] = sanitizedReferences
+                        };
+
+                        var mem0Messages = new List<Mem0MessagePayload>
+                        {
+                            new()
                             {
-                                { "id", catalog.Id },
-                                { "name", catalog.Name },
-                                { "url", catalog.Url },
-                                { "documentId", documents.Id },
-                                { "type", "docs" },
-                                { "reference", dependentFiles }
+                                Role = "system",
+                                Content = await PromptContext.Mem0(nameof(PromptConstant.Mem0.DocsSystem),
+                                    new KernelArguments(), OpenAIOptions.ChatModel)
                             },
-                            memoryType: "procedural_memory", cancellationToken: ct);
+                            new()
+                            {
+                                Role = "user",
+                                Content = $"""
+                                           # {catalog.Name}
+                                           <file name="{sanitizedFileName}" original-name="{EscapeAttributeValue(originalFileName)}">
+                                           {content.Content}
+                                           </file>
+                                           """
+                            }
+                        };
+
+                        await SendMem0MemoryAsync(mem0Messages, sessionId, metadata, ct);
 
                         Interlocked.Increment(ref catalogSuccess);
                         var processed = Interlocked.Increment(ref catalogProcessed);
@@ -344,31 +515,45 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
                         content = TruncateContent(content, MaxAllowedInputTokens);
                     }
 
-                    // 处理文件内容
-                    await client.AddAsync([
-                        new Message()
+                    var relativePath = file.Path.Replace(documents.GitPath, "")
+                        .TrimStart('/')
+                        .TrimStart('\\');
+                    var sanitizedFileName = SanitizeGraphIdentifier(file.Name, $"file_{documents.Id}");
+                    var sanitizedFileType = SanitizeGraphIdentifier(file.Type, "file_type");
+                    var sanitizedRelativePath = SanitizeGraphIdentifier(relativePath, $"file_path_{documents.Id}");
+                    var fileMetadata = new Dictionary<string, object>
+                    {
+                        ["fileName"] = file.Name,
+                        ["fileNameGraph"] = sanitizedFileName,
+                        ["filePath"] = file.Path,
+                        ["filePathRelative"] = relativePath,
+                        ["filePathGraph"] = sanitizedRelativePath,
+                        ["fileType"] = file.Type,
+                        ["fileTypeGraph"] = sanitizedFileType,
+                        ["type"] = "code",
+                        ["documentId"] = documents.Id,
+                    };
+
+                    var mem0Messages = new List<Mem0MessagePayload>
+                    {
+                        new()
                         {
                             Role = "system",
                             Content = await PromptContext.Mem0(nameof(PromptConstant.Mem0.CodeSystem),
                                 new KernelArguments(), OpenAIOptions.ChatModel)
                         },
-                        new Message
+                        new()
                         {
                             Role = "user",
                             Content = $"""
-                                       ```{file.Path.Replace(documents.GitPath, "").TrimStart("/").TrimStart('\\')}
+                                       ```{relativePath}
                                        {content}
                                        ```
                                        """
                         }
-                    ], userId: warehouse.Id, memoryType: "procedural_memory", metadata: new Dictionary<string, object>()
-                    {
-                        { "fileName", file.Name },
-                        { "filePath", file.Path },
-                        { "fileType", file.Type },
-                        { "type", "code" },
-                        { "documentId", documents.Id },
-                    }, cancellationToken: ct);
+                    };
+
+                    await SendMem0MemoryAsync(mem0Messages, warehouse.Id, fileMetadata, ct);
 
                     Interlocked.Increment(ref fileSuccess);
                     var processed = Interlocked.Increment(ref fileProcessed);
