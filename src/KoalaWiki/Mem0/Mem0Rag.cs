@@ -67,7 +67,7 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
         var allowedChars = (int)(maxTokens * CharsPerToken);
         if (content.Length <= allowedChars)
             return content;
-            
+
         return content.Substring(0, allowedChars) + "\n... (内容已截断)";
     }
 
@@ -142,7 +142,7 @@ public class Mem0Rag(IServiceProvider service, ILogger<Mem0Rag> logger) : Backgr
         var client = new HttpClient
         {
             BaseAddress = baseAddress,
-            Timeout = TimeSpan.FromMinutes(10)
+            Timeout = TimeSpan.FromMinutes(30) // Mem0 ingestion can be long-running; extend timeout for completeness
         };
 
         if (!string.IsNullOrWhiteSpace(OpenAIOptions.Mem0ApiKey))

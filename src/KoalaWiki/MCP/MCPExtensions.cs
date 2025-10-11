@@ -67,7 +67,7 @@ public static class McpExtensions
                     {
                         Name = $"{mcpName}-Search",
                         Description =
-                            $"Query {owner}/{name} repository for relevant code snippets and documentation based on user inquiries.",
+                            $"Query {owner}/{name} repository for relevant code snippets and documentation based on user inquiries. For large repositories, consider using limit=3 and minRelevance=0.7 to reduce context size.",
                         InputSchema = JsonSerializer.Deserialize<JsonElement>("""
                                                                               {
                                                                                   "type": "object",
@@ -78,12 +78,12 @@ public static class McpExtensions
                                                                                     },
                                                                                     "limit": {
                                                                                       "type": "integer",
-                                                                                      "description": "Number of search results to return. Default is 5. Increase for broader coverage or decrease for focused results.",
+                                                                                      "description": "Number of search results to return. Default is 5. For large repositories like OpenBMC, use 3 to avoid context overflow.",
                                                                                       "default": 5
                                                                                     },
                                                                                     "minRelevance": {
                                                                                       "type": "number",
-                                                                                      "description": "Minimum relevance threshold for vector search results, ranging from 0 to 1. Default is 0.3. Higher values (e.g., 0.7) return more precise matches, while lower values provide more varied results.",
+                                                                                      "description": "Minimum relevance threshold for vector search results, ranging from 0 to 1. Default is 0.3. For large repositories, use 0.7 for more precise matches and smaller context size.",
                                                                                       "default": 0.3
                                                                                     }
                                                                                   },
@@ -260,6 +260,21 @@ public static class McpExtensions
                         .Where(x => x.OrganizationName.ToLower() == owner && x.Name.ToLower() == name)
                         .FirstOrDefaultAsync(token);
 
+                    if (warehouse == null)
+                    {
+                        return new CallToolResult()
+                        {
+                            Content =
+                            [
+                                new TextContentBlock
+                                {
+                                    Text = $"Error: Repository {owner}/{name} not found. Please create the repository first.",
+                                    Type = "text"
+                                }
+                            ]
+                        };
+                    }
+
                     var question = context.Params?.Arguments?["query"].ToString();
                     int limit = 5;
                     double minRelevance = 0.3;
@@ -267,12 +282,26 @@ public static class McpExtensions
                     {
                         if (context.Params.Arguments.TryGetValue("limit", out var argument))
                         {
-                            limit = Convert.ToInt32(argument);
+                            if (argument is JsonElement limitElement)
+                            {
+                                limit = limitElement.GetInt32();
+                            }
+                            else
+                            {
+                                limit = Convert.ToInt32(argument);
+                            }
                         }
 
                         if (context.Params.Arguments.TryGetValue("minRelevance", out var paramsArgument))
                         {
-                            minRelevance = Convert.ToDouble(paramsArgument);
+                            if (paramsArgument is JsonElement relevanceElement)
+                            {
+                                minRelevance = relevanceElement.GetDouble();
+                            }
+                            else
+                            {
+                                minRelevance = Convert.ToDouble(paramsArgument);
+                            }
                         }
                     }
 

@@ -100,7 +100,7 @@
       - POSTGRES_COLLECTION_NAME=mem0Net # Mem0使用的Postgres集合名称
   
   postgres:
-    image: ankane/pgvector:v0.5.1
+    image: pgvector/pgvector:pg17
     restart: on-failure
     shm_size: "2gb" # 增加共享内存以支持超大仓库
     deploy:

@@ -50,6 +50,7 @@ COMPOSE="docker compose"
 sudo make down-mem0                   # 停止所有服务
 sudo $COMPOSE -f docker-compose-mem0.yml down --volumes --remove-orphans
 sudo $COMPOSE -f docker-compose-mem0.yml build --no-cache mem0 koalawiki
+sudo rm -rf data/ postgres_db/ neo4j_data/  # 清理数据库（可选）
 rm mem0.log
 make dev-mem0 2>&1 | tee mem0.log
 
