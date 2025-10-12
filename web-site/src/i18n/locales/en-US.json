@@ -112,7 +112,7 @@
     }
   },
   "register": {
-    "title": "Register for KoalaWiki",
+    "title": "Register for CKB",
     "subtitle": "Create a new account",
     "form": {
       "username": "Username",

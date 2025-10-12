@@ -127,7 +127,7 @@
     }
   },
   "register": {
-    "title": "注册 KoalaWiki",
+    "title": "注册 CKB",
     "subtitle": "创建一个新的账户",
     "form": {
       "username": "用户名",
