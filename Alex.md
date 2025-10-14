@@ -82,4 +82,34 @@ make down-mem0
 sudo rm -rf postgres_db/ neo4j_data/ data/
 make build-backend
 make up-mem0
+
+
+
+
+
+
+
+# 翻译文档
+
+# 1. 检查数据库中实际的仓库ID格式
+docker exec -it opendeepwiki-postgres-1 psql -U postgres -d KoalaWiki -c "SELECT \"Id\", \"Name\", \"OrganizationName\", \"Branch\" FROM \"Warehouses\" WHERE \"Name\" = 'openbmc';"
+
+# 2. Trigger翻译
+curl -X POST "http://localhost:8080/api/translation/repository" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "warehouseId": "2e77bf13-4e35-4e9a-b646-3bfbcf9a45b6",
+    "targetLanguage": "en-US",
+    "sourceLanguage": "zh-CN"
+  }'
+# 2. 查看翻译任务状态
+curl -s "http://localhost:8080/api/translation/repository/2e77bf13-4e35-4e9a-b646-3bfbcf9a45b6/tasks?targetLanguage=en-US" | jq '.'
+
+# 4. 监控翻译进度
+while true; do
+  echo "=== $(date) ==="
+  curl -s "http://localhost:8080/api/translation/repository/2e77bf13-4e35-4e9a-b646-3bfbcf9a45b6/tasks?targetLanguage=en-US" | jq '.[0] | {status: .status, progress: .progress, catalogsTranslated: .catalogsTranslated, filesTranslated: .filesTranslated, totalCatalogs: .totalCatalogs, totalFiles: .totalFiles, errorMessage: .errorMessage}'
+  sleep 30
+done
 ```
+
