@@ -128,11 +128,43 @@ public static class McpExtensions
                 tools.Add(new Tool()
                 {
                     Name = $"{mcpName}-" + nameof(FileTool.GetTree),
-                    Description = "Returns the file tree of the repository, including directories and files.",
+                    Description = "Returns the file tree of the repository, with options to control output size to avoid context window overflow.",
                     InputSchema = JsonSerializer.Deserialize<JsonElement>("""
                                                                           {
                                                                               "type": "object",
-                                                                              "properties": {},
+                                                                              "properties": {
+                                                                                  "maxDepth": {
+                                                                                      "type": "integer",
+                                                                                      "description": "Maximum directory depth to traverse (default: unlimited)",
+                                                                                      "default": null
+                                                                                  },
+                                                                                  "maxItems": {
+                                                                                      "type": "integer",
+                                                                                      "description": "Maximum number of items to return (default: 1000 to avoid context overflow)",
+                                                                                      "default": 1000
+                                                                                  },
+                                                                                  "outputFormat": {
+                                                                                      "type": "string",
+                                                                                      "enum": ["full", "summary", "compact", "pathlist"],
+                                                                                      "description": "Output format: full tree, summary stats, compact format, or path list",
+                                                                                      "default": "compact"
+                                                                                  },
+                                                                                  "rootPath": {
+                                                                                      "type": "string",
+                                                                                      "description": "Root path to start traversal from (default: repository root)",
+                                                                                      "default": ""
+                                                                                  },
+                                                                                  "includeFiles": {
+                                                                                      "type": "boolean",
+                                                                                      "description": "Whether to include files in output (default: true)",
+                                                                                      "default": true
+                                                                                  },
+                                                                                  "includeDirs": {
+                                                                                      "type": "boolean",
+                                                                                      "description": "Whether to include directories in output (default: true)",
+                                                                                      "default": true
+                                                                                  }
+                                                                              },
                                                                               "required": []
                                                                           }
                                                                           """)
@@ -162,40 +194,39 @@ public static class McpExtensions
                 if (functionName.Equals(mcpName + "-" + nameof(FileTool.ReadFileFromLineAsync),
                         StringComparison.CurrentCulture))
                 {
-                    var items = context.Params?.Arguments?["items"];
-                    if (items == null || items is not JsonElement itemsElement ||
-                        itemsElement.ValueKind != JsonValueKind.Array)
-                    {
-                        return new CallToolResult()
-                        {
-                            Content =
-                            [
-                                new TextContentBlock
-                                {
-                                    Text = "参数 items 不能为空且必须为数组。",
-                                    Type = "text"
-                                }
-                            ]
-                        };
-                    }
-
-
-                    var dbContext = context.Services!.GetService<IKoalaWikiContext>();
-                    var warehouse = await dbContext.Warehouses
-                        .Where(x => x.OrganizationName.ToLower() == owner && x.Name.ToLower() == name)
-                        .FirstOrDefaultAsync(token);
-
-                    var document = await dbContext.Documents
-                        .Where(x => x.WarehouseId == warehouse.Id)
-                        .FirstOrDefaultAsync(token);
-
-                    var fileFunction = new FileTool(document.GitPath, null);
-
                     var sw = Stopwatch.StartNew();
 
-                    var result = await
-                        fileFunction.ReadFileFromLineAsync(
-                            itemsElement.Deserialize<ReadFileItemInput>(JsonSerializerOptions.Web));
+                    string response;
+                    
+                    // 检查是否有参数
+                    if (context.Params.Arguments != null && context.Params.Arguments.Count > 0)
+                    {
+                        try
+                        {
+                            var argumentsJson = JsonSerializer.Serialize(context.Params.Arguments, JsonSerializerOptions.Web);
+                            var readFileInput = JsonSerializer.Deserialize<ReadFileItemInput>(argumentsJson, JsonSerializerOptions.Web);
+                            
+                            var dbContext = context.Services!.GetService<IKoalaWikiContext>();
+                            var warehouse = await dbContext.Warehouses
+                                .Where(x => x.OrganizationName.ToLower() == owner && x.Name.ToLower() == name)
+                                .FirstOrDefaultAsync(token);
+
+                            var document = await dbContext.Documents
+                                .Where(x => x.WarehouseId == warehouse.Id)
+                                .FirstOrDefaultAsync(token);
+
+                            var fileFunction = new FileTool(document.GitPath, null);
+                            response = await fileFunction.ReadFileFromLineAsync(readFileInput);
+                        }
+                        catch (Exception ex)
+                        {
+                            response = $"Error: {ex.Message}";
+                        }
+                    }
+                    else
+                    {
+                        response = "Error: Missing required parameters (filePath, startLine, endLine)";
+                    }
 
                     sw.Stop();
 
@@ -208,7 +239,7 @@ public static class McpExtensions
                         [
                             new TextContentBlock
                             {
-                                Text = result,
+                                Text = response,
                                 Type = "text"
                             }
                         ]
@@ -232,7 +263,28 @@ public static class McpExtensions
 
                     var sw = Stopwatch.StartNew();
 
-                    var response = fileFunction.GetTree();
+                    string response;
+                    
+                    // 检查是否有参数
+                    if (context.Params.Arguments != null && context.Params.Arguments.Count > 0)
+                    {
+                        try
+                        {
+                            var argumentsJson = JsonSerializer.Serialize(context.Params.Arguments, JsonSerializerOptions.Web);
+                            var getTreeInput = JsonSerializer.Deserialize<GetTreeInput>(argumentsJson, JsonSerializerOptions.Web);
+                            response = fileFunction.GetTree(getTreeInput);
+                        }
+                        catch
+                        {
+                            // 如果参数解析失败，使用默认参数
+                            response = fileFunction.GetTree();
+                        }
+                    }
+                    else
+                    {
+                        // 没有参数时，使用默认的限制参数以避免context overflow
+                        response = fileFunction.GetTree(new GetTreeInput { MaxItems = 1000, OutputFormat = "compact" });
+                    }
 
                     sw.Stop();
 

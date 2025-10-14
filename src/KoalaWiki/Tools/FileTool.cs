@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel;
+using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -21,14 +22,134 @@ public class FileTool(string gitPath, List<string>? files)
     /// </summary>
     public string GetTree()
     {
+        return GetTree(new GetTreeInput());
+    }
+
+    /// <summary>
+    /// 获取当前仓库压缩结构（带参数控制）
+    /// </summary>
+    public string GetTree(GetTreeInput input)
+    {
         var ignoreFiles = DocumentsHelper.GetIgnoreFiles(gitPath);
         var pathInfos = new List<PathInfo>();
 
         // 递归扫描目录所有文件和目录
         DocumentsHelper.ScanDirectory(gitPath, pathInfos, ignoreFiles);
 
-        var fileTree = FileTreeBuilder.BuildTree(pathInfos, gitPath);
-        return FileTreeBuilder.ToCompactString(fileTree);
+        // 应用过滤器
+        var filteredPathInfos = ApplyFilters(pathInfos, input);
+
+        // 根据输出格式返回不同的结果
+        switch (input.OutputFormat.ToLower())
+        {
+            case "summary":
+                return GenerateTreeSummary(filteredPathInfos, gitPath);
+            case "pathlist":
+                var fileTree = FileTreeBuilder.BuildTree(filteredPathInfos, gitPath);
+                return string.Join("\n", FileTreeBuilder.ToPathList(fileTree));
+            case "full":
+                var fullTree = FileTreeBuilder.BuildTree(filteredPathInfos, gitPath);
+                return FileTreeBuilder.ToCompactString(fullTree);
+            case "compact":
+            default:
+                var compactTree = FileTreeBuilder.BuildTree(filteredPathInfos, gitPath);
+                return FileTreeBuilder.ToCompactString(compactTree);
+        }
+    }
+
+    private List<PathInfo> ApplyFilters(List<PathInfo> pathInfos, GetTreeInput input)
+    {
+        var filtered = pathInfos.AsEnumerable();
+
+        // 过滤文件类型
+        if (!input.IncludeFiles)
+        {
+            filtered = filtered.Where(p => p.Type != "File");
+        }
+        if (!input.IncludeDirs)
+        {
+            filtered = filtered.Where(p => p.Type != "Directory");
+        }
+
+        // 过滤根路径
+        if (!string.IsNullOrEmpty(input.RootPath))
+        {
+            var rootPath = Path.Combine(gitPath, input.RootPath.TrimStart('/'));
+            filtered = filtered.Where(p => p.Path.StartsWith(rootPath));
+        }
+
+        // 应用深度限制
+        if (input.MaxDepth.HasValue)
+        {
+            filtered = filtered.Where(p =>
+            {
+                var relativePath = p.Path.Replace(gitPath, "").TrimStart('\\', '/');
+                var depth = relativePath.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries).Length;
+                return depth <= input.MaxDepth.Value;
+            });
+        }
+
+        var result = filtered.ToList();
+
+        // 应用数量限制
+        if (input.MaxItems.HasValue && result.Count > input.MaxItems.Value)
+        {
+            result = result.Take(input.MaxItems.Value).ToList();
+        }
+
+        return result;
+    }
+
+    private string GenerateTreeSummary(List<PathInfo> pathInfos, string basePath)
+    {
+        var directories = pathInfos.Where(p => p.Type == "Directory").ToList();
+        var files = pathInfos.Where(p => p.Type == "File").ToList();
+
+        var summary = new StringBuilder();
+        summary.AppendLine("📊 Repository Structure Summary");
+        summary.AppendLine($"├── Total Directories: {directories.Count:N0}");
+        summary.AppendLine($"├── Total Files: {files.Count:N0}");
+        summary.AppendLine($"└── Total Items: {pathInfos.Count:N0}");
+
+        // 顶级目录
+        var topLevelDirs = directories
+            .Where(d =>
+            {
+                var relativePath = d.Path.Replace(basePath, "").TrimStart('\\', '/');
+                return !relativePath.Contains('/') && !relativePath.Contains('\\') && !string.IsNullOrEmpty(relativePath);
+            })
+            .Take(10)
+            .ToList();
+
+        if (topLevelDirs.Any())
+        {
+            summary.AppendLine("\n📁 Top Level Directories:");
+            foreach (var dir in topLevelDirs)
+            {
+                var name = Path.GetFileName(dir.Path);
+                summary.AppendLine($"   • {name}");
+            }
+        }
+
+        // 文件类型统计
+        var fileExtensions = files
+            .Select(f => Path.GetExtension(f.Path).ToLower())
+            .Where(ext => !string.IsNullOrEmpty(ext))
+            .GroupBy(ext => ext)
+            .OrderByDescending(g => g.Count())
+            .Take(10)
+            .ToList();
+
+        if (fileExtensions.Any())
+        {
+            summary.AppendLine("\n📄 File Types (Top 10):");
+            foreach (var ext in fileExtensions)
+            {
+                summary.AppendLine($"   • {ext.Key}: {ext.Count():N0} files");
+            }
+        }
+
+        return summary.ToString();
     }
 
     public async Task<string> ReadFileAsync(
@@ -654,4 +775,31 @@ public class ReadFileItemInput
         "The number of lines to read. Only provide if the file is too large to read at once.")]
     [JsonPropertyName("limit")]
     public int Limit { get; set; } = 200;
+}
+
+public class GetTreeInput
+{
+    [Description("Maximum directory depth to traverse")]
+    [JsonPropertyName("maxDepth")]
+    public int? MaxDepth { get; set; }
+
+    [Description("Maximum number of items to return (default: 1000 to avoid context overflow)")]
+    [JsonPropertyName("maxItems")]
+    public int? MaxItems { get; set; } = 1000;
+
+    [Description("Output format: full, summary, compact, or pathlist")]
+    [JsonPropertyName("outputFormat")]
+    public string OutputFormat { get; set; } = "compact";
+
+    [Description("Root path to start traversal from")]
+    [JsonPropertyName("rootPath")]
+    public string RootPath { get; set; } = "";
+
+    [Description("Whether to include files in output")]
+    [JsonPropertyName("includeFiles")]
+    public bool IncludeFiles { get; set; } = true;
+
+    [Description("Whether to include directories in output")]
+    [JsonPropertyName("includeDirs")]
+    public bool IncludeDirs { get; set; } = true;
 }

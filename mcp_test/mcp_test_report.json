@@ -1,0 +1,160 @@
+{
+  "summary": {
+    "total_tests": 21,
+    "passed": 7,
+    "failed": 14,
+    "skipped": 0,
+    "success_rate": 33.33333333333333,
+    "total_execution_time": 42.28687381744385,
+    "average_execution_time": 2.0136606579735163
+  },
+  "test_details": [
+    {
+      "name": "Method Discovery",
+      "status": "PASS",
+      "message": "Found 4 tools: openbmcopenbmc_GenerateDocument, openbmcopenbmc-Search, openbmcopenbmc-ReadFileFromLineAsync, openbmcopenbmc-GetTree",
+      "execution_time": 0.6663670539855957,
+      "has_response_data": true
+    },
+    {
+      "name": "GetTree",
+      "status": "PASS",
+      "message": "Successfully retrieved file tree with 48440 characters",
+      "execution_time": 7.710216283798218,
+      "has_response_data": true
+    },
+    {
+      "name": "Search(OpenBMC README documentation)",
+      "status": "PASS",
+      "message": "Search completed successfully, found 0 results",
+      "execution_time": 15.634350061416626,
+      "has_response_data": true
+    },
+    {
+      "name": "Search(configuration files)",
+      "status": "PASS",
+      "message": "Search completed successfully, found 0 results",
+      "execution_time": 9.048145771026611,
+      "has_response_data": true
+    },
+    {
+      "name": "Search(build system)",
+      "status": "PASS",
+      "message": "Search completed successfully, found 0 results",
+      "execution_time": 9.127975225448608,
+      "has_response_data": true
+    },
+    {
+      "name": "GenerateDocument(What is OpenBMC?...)",
+      "status": "PASS",
+      "message": "Documentation generated successfully, 1034 characters",
+      "execution_time": 0.03198099136352539,
+      "has_response_data": true
+    },
+    {
+      "name": "GenerateDocument(How to build OpenBMC?...)",
+      "status": "PASS",
+      "message": "Documentation generated successfully, 1210 characters",
+      "execution_time": 0.005601167678833008,
+      "has_response_data": true
+    },
+    {
+      "name": "ReadFileFromLineAsync(README.md)",
+      "status": "FAIL",
+      "message": "MCP Error: {'code': -32603, 'message': 'An error occurred.'}",
+      "execution_time": 0.01677703857421875,
+      "has_response_data": true
+    },
+    {
+      "name": "ReadFileFromLineAsync(LICENSE)",
+      "status": "FAIL",
+      "message": "MCP Error: {'code': -32603, 'message': 'An error occurred.'}",
+      "execution_time": 0.0029249191284179688,
+      "has_response_data": true
+    },
+    {
+      "name": "ReadFileFromLineAsync(MAINTAINERS)",
+      "status": "FAIL",
+      "message": "MCP Error: {'code': -32603, 'message': 'An error occurred.'}",
+      "execution_time": 0.002703428268432617,
+      "has_response_data": true
+    },
+    {
+      "name": "ReadFileFromLineAsync(meta-openembedded/meta-oe/conf/layer.conf)",
+      "status": "FAIL",
+      "message": "MCP Error: {'code': -32603, 'message': 'An error occurred.'}",
+      "execution_time": 0.0027396678924560547,
+      "has_response_data": true
+    },
+    {
+      "name": "ReadFileFromLineAsync(poky/meta/conf/bitbake.conf)",
+      "status": "FAIL",
+      "message": "MCP Error: {'code': -32603, 'message': 'An error occurred.'}",
+      "execution_time": 0.0028002262115478516,
+      "has_response_data": true
+    },
+    {
+      "name": "ReadFileFromLineAsync(meta-openembedded/meta-oe/recipes-connectivity/libmbim/libmbim_1.30.0.bb)",
+      "status": "FAIL",
+      "message": "MCP Error: {'code': -32603, 'message': 'An error occurred.'}",
+      "execution_time": 0.003031015396118164,
+      "has_response_data": true
+    },
+    {
+      "name": "ReadFileFromLineAsync(poky/meta/recipes-kernel/linux/linux-yocto-common.inc)",
+      "status": "FAIL",
+      "message": "MCP Error: {'code': -32603, 'message': 'An error occurred.'}",
+      "execution_time": 0.0031578540802001953,
+      "has_response_data": true
+    },
+    {
+      "name": "ReadFileFromLineAsync(meta-phosphor/README.md)",
+      "status": "FAIL",
+      "message": "MCP Error: {'code': -32603, 'message': 'An error occurred.'}",
+      "execution_time": 0.003938436508178711,
+      "has_response_data": true
+    },
+    {
+      "name": "ReadFileFromLineAsync(docs/README.md)",
+      "status": "FAIL",
+      "message": "MCP Error: {'code': -32603, 'message': 'An error occurred.'}",
+      "execution_time": 0.004149913787841797,
+      "has_response_data": true
+    },
+    {
+      "name": "ReadFileFromLineAsync(meta-phosphor/recipes-phosphor/interfaces/bmcweb_git.bb)",
+      "status": "FAIL",
+      "message": "MCP Error: {'code': -32603, 'message': 'An error occurred.'}",
+      "execution_time": 0.00299072265625,
+      "has_response_data": true
+    },
+    {
+      "name": "ReadFileFromLineAsync(meta-phosphor/classes/phosphor-dbus-service.bbclass)",
+      "status": "FAIL",
+      "message": "MCP Error: {'code': -32603, 'message': 'An error occurred.'}",
+      "execution_time": 0.004088163375854492,
+      "has_response_data": true
+    },
+    {
+      "name": "Invalid file path test",
+      "status": "FAIL",
+      "message": "MCP Error: {'code': -32603, 'message': 'An error occurred.'}",
+      "execution_time": 0.004912614822387695,
+      "has_response_data": true
+    },
+    {
+      "name": "Large line range test",
+      "status": "FAIL",
+      "message": "MCP Error: {'code': -32603, 'message': 'An error occurred.'}",
+      "execution_time": 0.0037212371826171875,
+      "has_response_data": true
+    },
+    {
+      "name": "Negative line numbers test",
+      "status": "FAIL",
+      "message": "MCP Error: {'code': -32603, 'message': 'An error occurred.'}",
+      "execution_time": 0.004302024841308594,
+      "has_response_data": true
+    }
+  ]
+}
