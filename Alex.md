@@ -163,8 +163,25 @@ docker logs opendeepwiki-koalawiki-1 | grep -i "翻译\|translation" | tail -20
 - 如果任务停留在Pending状态，需要手动激活（步骤3）
 - 翻译完成后，可以通过前端界面切换语言查看英文版本
 
+#### ✅ 国际化功能状态
+**前端语言切换功能已完全修复**：
+- ✅ 后端API正确支持语言参数（`languageCode`）
+- ✅ 前端store已修复，会传递当前语言代码给API
+- ✅ 语言切换时自动重新获取翻译后的文档目录
+- ✅ 左侧目录树会根据选择的语言显示对应的翻译内容
+
+**测试验证**：
+```bash
+# 中文目录: "OpenBMC 入门指南"
+curl -s "http://localhost:8080/api/DocumentCatalog/DocumentCatalogs?organizationName=openbmc&name=openbmc&branch=master&languageCode=zh-CN" | jq '.items[0].label'
+
+# 英文目录: "OpenBMC Getting Started Guide"  
+curl -s "http://localhost:8080/api/DocumentCatalog/DocumentCatalogs?organizationName=openbmc&name=openbmc&branch=master&languageCode=en-US" | jq '.items[0].label'
+```
+
 #### 预期结果
 翻译完成后，你将同时拥有：
 - ✅ 完整的中文版OpenBMC文档
 - ✅ 完整的英文版OpenBMC文档  
 - ✅ 支持在前端界面切换语言查看
+- ✅ 左侧目录树会根据语言设置显示对应的翻译内容

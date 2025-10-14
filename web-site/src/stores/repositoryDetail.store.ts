@@ -3,6 +3,16 @@
 import { create } from 'zustand'
 import { warehouseService } from '@/services/warehouse.service'
 import type { DocumentNode } from '@/components/repository/DocumentTree'
+import i18n from '@/i18n/index'
+
+// 监听语言变化事件
+i18n.on('languageChanged', (lng) => {
+  // 当语言变化时，重新获取文档目录
+  const store = useRepositoryDetailStore.getState()
+  if (store.owner && store.name) {
+    store.fetchDocumentCatalog()
+  }
+})
 
 interface RepositoryInfo {
   id: string
@@ -157,7 +167,8 @@ export const useRepositoryDetailStore = create<RepositoryDetailState>((set, get)
     set({ loadingDocuments: true })
 
     try {
-      const response = await warehouseService.getDocumentCatalog(owner, name, targetBranch)
+      // 传递当前语言代码
+      const response = await warehouseService.getDocumentCatalog(owner, name, targetBranch, i18n.language)
 
       if (response && response.items) {
         const nodes = convertToTreeNodes(response.items)
@@ -198,7 +209,8 @@ export const useRepositoryDetailStore = create<RepositoryDetailState>((set, get)
     set({ loadingContent: true })
 
     try {
-      const response = await warehouseService.getDocumentById(owner, name, path, selectedBranch)
+      // 传递当前语言代码
+      const response = await warehouseService.getDocumentById(owner, name, path, selectedBranch, i18n.language)
       set({
         documentContent: response?.content || '',
         loadingContent: false,

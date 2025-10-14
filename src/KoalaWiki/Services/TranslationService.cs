@@ -61,7 +61,8 @@ public class TranslationService : FastApi
                 {
                     await scopedTranslateService.UpdateTranslationTaskAsync(taskId, TranslationTaskStatus.Running);
 
-                    var result = await scopedTranslateService.GenerateRepositoryI18nAsync(
+                    var result = await scopedTranslateService.GenerateRepositoryI18nWithTaskAsync(
+                        taskId,
                         request.WarehouseId,
                         request.TargetLanguage,
                         request.SourceLanguage);

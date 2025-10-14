@@ -586,18 +586,92 @@ public partial class DocumentPendingService
             foreach (Match match in matches)
             {
                 var code = match.Groups[1].Value;
-
-                // 只需要删除[]里面的(和)，它可能单独处理
-                var codeWithoutBrackets =
-                    Regex.Replace(code, @"\[[^\]]*\]",
-                        m => m.Value.Replace("(", "").Replace(")", "").Replace("（", "").Replace("）", ""));
-                // 然后替换原有内容
-                fileItem.Content = fileItem.Content.Replace(match.Value, $"```mermaid\n{codeWithoutBrackets}```");
+                var fixedCode = FixMermaidCode(code);
+                fileItem.Content = fileItem.Content.Replace(match.Value, $"```mermaid\n{fixedCode}\n```");
             }
         }
         catch (Exception ex)
         {
             Log.Error(ex, "修复mermaid语法失败");
         }
+    }
+
+    private static string FixMermaidCode(string mermaidCode)
+    {
+        var lines = mermaidCode.Split('\n');
+        var fixedLines = new List<string>();
+        
+        foreach (var line in lines)
+        {
+            var fixedLine = line.Trim();
+            
+            // Skip empty lines
+            if (string.IsNullOrWhiteSpace(fixedLine))
+            {
+                continue;
+            }
+            
+            // Fix variable syntax like ${S} - remove or replace with valid text
+            fixedLine = Regex.Replace(fixedLine, @"\$\{[^}]*\}", "Variable");
+            
+            // Fix node definitions with brackets - remove parentheses from node labels
+            fixedLine = Regex.Replace(fixedLine, @"\[([^\]]*)\([^\)]*\)([^\]]*)\]", "[$1$2]");
+            fixedLine = Regex.Replace(fixedLine, @"\[([^\]]*)\（([^\）]*)\）([^\]]*)\]", "[$1$2$3]");
+            
+            // Fix unclosed quotes in notes
+            if (fixedLine.Contains("note ") && fixedLine.Contains("\""))
+            {
+                var quoteCount = fixedLine.Count(c => c == '"');
+                if (quoteCount % 2 == 1) // Odd number of quotes means unclosed
+                {
+                    fixedLine += "\""; // Close the quote
+                }
+            }
+            
+            // Fix arrow syntax issues - ensure proper spacing
+            fixedLine = Regex.Replace(fixedLine, @"(\w+)\s*-->\s*$", "$1 --> End");
+            fixedLine = Regex.Replace(fixedLine, @"-->\s*\[", " --> [");
+            
+            // Fix duplicate node names in flowcharts
+            if (fixedLine.Contains("-->") && fixedLine.Contains("[") && fixedLine.Contains("]"))
+            {
+                // Pattern like: NodeA[Label] --> NodeB[Label]
+                var nodePattern = @"(\w+)\[([^\]]+)\]\s*-->\s*(\w+)\[([^\]]+)\]";
+                var nodeMatch = Regex.Match(fixedLine, nodePattern);
+                if (nodeMatch.Success)
+                {
+                    var sourceNode = nodeMatch.Groups[1].Value;
+                    var sourceLabel = nodeMatch.Groups[2].Value;
+                    var targetNode = nodeMatch.Groups[3].Value;
+                    var targetLabel = nodeMatch.Groups[4].Value;
+                    
+                    // Ensure nodes have different names
+                    if (sourceNode == targetNode)
+                    {
+                        targetNode += "2";
+                    }
+                    
+                    fixedLine = $"{sourceNode}[{sourceLabel}] --> {targetNode}[{targetLabel}]";
+                }
+            }
+            
+            // Fix sequence diagram participant names with spaces
+            if (fixedLine.StartsWith("participant "))
+            {
+                fixedLine = Regex.Replace(fixedLine, @"participant\s+(.+)", m =>
+                {
+                    var participantName = m.Groups[1].Value.Trim();
+                    if (participantName.Contains(" ") && !participantName.StartsWith("\""))
+                    {
+                        return $"participant \"{participantName}\"";
+                    }
+                    return m.Value;
+                });
+            }
+            
+            fixedLines.Add(fixedLine);
+        }
+        
+        return string.Join("\n", fixedLines);
     }
 }

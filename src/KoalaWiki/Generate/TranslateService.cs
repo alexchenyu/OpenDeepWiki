@@ -422,6 +422,7 @@ public class TranslateService
 
             var i18n = new DocumentCatalogI18n
             {
+                Id = Guid.NewGuid().ToString(),
                 DocumentCatalogId = catalog.Id,
                 LanguageCode = targetLanguage,
                 Name = translatedName,
@@ -430,7 +431,13 @@ public class TranslateService
                 UpdatedAt = DateTime.UtcNow
             };
 
+            _logger.LogInformation("创建DocumentCatalogI18n，ID: {Id}, DocumentCatalogId: {DocumentCatalogId}, LanguageCode: {LanguageCode}", 
+                i18n.Id, i18n.DocumentCatalogId, i18n.LanguageCode);
+
             _dbContext.DocumentCatalogI18ns.Add(i18n);
+            
+            _logger.LogInformation("添加到DbContext后，ID: {Id}", i18n.Id);
+            
             await _dbContext.SaveChangesAsync(cancellationToken);
 
             _logger.LogDebug("完成文档目录 {CatalogId} 的 {TargetLanguage} 翻译", catalog.Id, targetLanguage);
@@ -475,6 +482,7 @@ public class TranslateService
 
             var i18n = new DocumentFileItemI18n
             {
+                Id = Guid.NewGuid().ToString(),
                 DocumentFileItemId = fileItem.Id,
                 LanguageCode = targetLanguage,
                 Title = translatedTitle,
@@ -484,7 +492,13 @@ public class TranslateService
                 UpdatedAt = DateTime.UtcNow
             };
 
+            _logger.LogInformation("创建DocumentFileItemI18n，ID: {Id}, DocumentFileItemId: {DocumentFileItemId}, LanguageCode: {LanguageCode}", 
+                i18n.Id, i18n.DocumentFileItemId, i18n.LanguageCode);
+
             _dbContext.DocumentFileItemI18ns.Add(i18n);
+            
+            _logger.LogInformation("添加到DbContext后，ID: {Id}", i18n.Id);
+            
             await _dbContext.SaveChangesAsync(cancellationToken);
 
             _logger.LogDebug("完成文档文件 {FileItemId} 的 {TargetLanguage} 翻译", fileItem.Id, targetLanguage);

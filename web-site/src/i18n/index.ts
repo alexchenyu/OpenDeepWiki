@@ -46,6 +46,11 @@ i18n
     defaultNS: 'translation',
   })
 
+// 暴露到全局对象，方便调试
+if (typeof window !== 'undefined') {
+  window.i18n = i18n
+}
+
 export default i18n
 
 // 导出语言列表
