@@ -82,34 +82,89 @@ make down-mem0
 sudo rm -rf postgres_db/ neo4j_data/ data/
 make build-backend
 make up-mem0
+```
+## OpenDeepWiki 多语言翻译操作指南
 
+### 为 OpenBMC 生成英文文档（保留中文版本）
 
-
-
-
-
-
-# 翻译文档
-
-# 1. 检查数据库中实际的仓库ID格式
+#### 1. 获取仓库ID
+```bash
+# 通过组织名和仓库名获取真实的仓库ID（GUID格式）
 docker exec -it opendeepwiki-postgres-1 psql -U postgres -d KoalaWiki -c "SELECT \"Id\", \"Name\", \"OrganizationName\", \"Branch\" FROM \"Warehouses\" WHERE \"Name\" = 'openbmc';"
+```
 
-# 2. Trigger翻译
+#### 2. 启动翻译任务
+```bash
+# 使用获取到的仓库ID启动翻译（替换为实际ID）
+REPO_ID="2e77bf13-4e35-4e9a-b646-3bfbcf9a45b6"
+
 curl -X POST "http://localhost:8080/api/translation/repository" \
   -H "Content-Type: application/json" \
-  -d '{
-    "warehouseId": "2e77bf13-4e35-4e9a-b646-3bfbcf9a45b6",
-    "targetLanguage": "en-US",
-    "sourceLanguage": "zh-CN"
-  }'
-# 2. 查看翻译任务状态
-curl -s "http://localhost:8080/api/translation/repository/2e77bf13-4e35-4e9a-b646-3bfbcf9a45b6/tasks?targetLanguage=en-US" | jq '.'
+  -d "{
+    \"warehouseId\": \"$REPO_ID\",
+    \"targetLanguage\": \"en-US\",
+    \"sourceLanguage\": \"zh-CN\"
+  }"
+```
 
-# 4. 监控翻译进度
+#### 3. 手动激活任务（如果停留在Pending状态）
+```bash
+# 检查文档数量
+docker exec -it opendeepwiki-postgres-1 psql -U postgres -d KoalaWiki -c "
+SELECT COUNT(*) as catalogs FROM \"DocumentCatalogs\" WHERE \"WarehouseId\" = '$REPO_ID';
+SELECT COUNT(dfi.*) as files FROM \"DocumentFileItems\" dfi 
+JOIN \"DocumentCatalogs\" dc ON dfi.\"DocumentCatalogId\" = dc.\"Id\" 
+WHERE dc.\"WarehouseId\" = '$REPO_ID';"
+
+# 手动激活翻译任务
+docker exec -it opendeepwiki-postgres-1 psql -U postgres -d KoalaWiki -c "
+UPDATE \"TranslationTasks\" 
+SET \"Status\" = 1, \"StartedAt\" = NOW(), \"TotalCatalogs\" = 13, \"TotalFiles\" = 13
+WHERE \"WarehouseId\" = '$REPO_ID' AND \"Status\" = 0;"
+```
+
+#### 4. 监控翻译进度
+```bash
+# 实时监控翻译状态
 while true; do
   echo "=== $(date) ==="
-  curl -s "http://localhost:8080/api/translation/repository/2e77bf13-4e35-4e9a-b646-3bfbcf9a45b6/tasks?targetLanguage=en-US" | jq '.[0] | {status: .status, progress: .progress, catalogsTranslated: .catalogsTranslated, filesTranslated: .filesTranslated, totalCatalogs: .totalCatalogs, totalFiles: .totalFiles, errorMessage: .errorMessage}'
+  curl -s "http://localhost:8080/api/translation/repository/$REPO_ID/tasks?targetLanguage=en-US" | jq '.[0] | {status: .status, catalogsTranslated: .catalogsTranslated, filesTranslated: .filesTranslated, totalCatalogs: .totalCatalogs, totalFiles: .totalFiles, errorMessage: .errorMessage}'
   sleep 30
 done
 ```
 
+#### 5. 支持的语言列表
+- `en-US` - English (US)  
+- `zh-CN` - 简体中文
+- `zh-TW` - 繁體中文
+- `ja-JP` - 日本語
+- `ko-KR` - 한국어
+- `fr-FR` - Français
+- `de-DE` - Deutsch
+- `es-ES` - Español
+- `ru-RU` - Русский
+
+#### 6. 故障排除
+```bash
+# 清理失败的翻译任务
+docker exec -it opendeepwiki-postgres-1 psql -U postgres -d KoalaWiki -c "
+DELETE FROM \"TranslationTasks\" WHERE \"WarehouseId\" = '$REPO_ID' AND \"Status\" IN (3, 99);"
+
+# 重启服务（如果任务处理器有问题）
+docker restart opendeepwiki-koalawiki-1
+
+# 查看翻译相关日志
+docker logs opendeepwiki-koalawiki-1 | grep -i "翻译\|translation" | tail -20
+```
+
+#### 注意事项
+- 翻译任务是异步后台处理，中文文档保持不变
+- 整个过程预计需要15-30分钟（取决于文档数量和AI响应速度）
+- 如果任务停留在Pending状态，需要手动激活（步骤3）
+- 翻译完成后，可以通过前端界面切换语言查看英文版本
+
+#### 预期结果
+翻译完成后，你将同时拥有：
+- ✅ 完整的中文版OpenBMC文档
+- ✅ 完整的英文版OpenBMC文档  
+- ✅ 支持在前端界面切换语言查看
