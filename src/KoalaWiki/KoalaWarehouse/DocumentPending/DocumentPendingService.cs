@@ -687,9 +687,38 @@ public partial class DocumentPendingService
                 }
             }
             
-            // Fix arrow syntax issues - ensure proper spacing
+            // Fix arrow syntax issues - ensure proper spacing and complete connections
             fixedLine = Regex.Replace(fixedLine, @"(\w+)\s*-->\s*$", "$1 --> End");
             fixedLine = Regex.Replace(fixedLine, @"-->\s*\[", " --> [");
+            
+            // Fix incomplete arrow connections like "Scale --> IdleRun --> Err"
+            // Ensure all nodes in arrow chains are properly defined
+            if (fixedLine.Contains("-->"))
+            {
+                // Handle multiple arrows in one line
+                var arrowPattern = @"(\w+)\s*-->\s*(\w+)\s*-->\s*(\w+)";
+                var arrowMatch = Regex.Match(fixedLine, arrowPattern);
+                if (arrowMatch.Success)
+                {
+                    var node1 = arrowMatch.Groups[1].Value;
+                    var node2 = arrowMatch.Groups[2].Value;
+                    var node3 = arrowMatch.Groups[3].Value;
+                    
+                    // Ensure node names are valid (no partial words)
+                    if (node3.Length < 3 || node3 == "Err")
+                    {
+                        node3 = "Error";
+                    }
+                    
+                    fixedLine = Regex.Replace(fixedLine, arrowPattern, $"{node1} --> {node2}\n    {node2} --> {node3}");
+                }
+                
+                // Fix single incomplete arrows
+                fixedLine = Regex.Replace(fixedLine, @"-->\s*(\w{1,2})\b", " --> Error");
+                
+                // Fix arrows pointing to incomplete words
+                fixedLine = Regex.Replace(fixedLine, @"-->\s*Err\b", " --> Error");
+            }
             
             // Fix duplicate node names in flowcharts
             if (fixedLine.Contains("-->") && fixedLine.Contains("[") && fixedLine.Contains("]"))
