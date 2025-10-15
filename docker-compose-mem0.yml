@@ -34,7 +34,7 @@
       - ENABLE_CODED_DEPENDENCY_ANALYSIS=true # 是否启用代码依赖分析？这可能会对代码的质量产生影响。
       - ENABLE_WAREHOUSE_FUNCTION_PROMPT_TASK=true # 是否启用MCP Prompt生成
       - ENABLE_WAREHOUSE_DESCRIPTION_TASK=true # 是否启用仓库Description生成
-      - ENABLE_MEM0=false # 是否启用Mem0 RAG用于增强对话检索能力
+      - ENABLE_MEM0=true # 是否启用Mem0 RAG用于增强对话检索能力
       - MEM0_API_KEY=koala-ai # Mem0 API Key
       - MEM0_ENDPOINT=http://mem0:8000 # Mem0 API Endpoint
       - OTEL_SERVICE_NAME=koalawiki

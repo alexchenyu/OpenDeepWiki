@@ -1238,6 +1238,62 @@ public class RepositoryService(
 
         return children;
     }
+
+    /// <summary>
+    /// 批量修复数据库中所有Mermaid语法错误
+    /// </summary>
+    public async Task<int> BatchFixMermaidSyntaxAsync()
+    {
+        var dbContext = serviceProvider.GetRequiredService<IKoalaWikiContext>();
+        
+        // 获取所有包含Mermaid的文档
+        var documentsWithMermaid = await dbContext.DocumentFileItems
+            .Where(x => x.Content.Contains("```mermaid"))
+            .ToListAsync();
+
+        var fixedCount = 0;
+        
+        foreach (var doc in documentsWithMermaid)
+        {
+            var originalContent = doc.Content;
+            
+            // 应用Mermaid修复
+            DocumentPendingService.RepairMermaid(doc);
+            
+            // 如果内容有变化，则更新数据库
+            if (doc.Content != originalContent)
+            {
+                await dbContext.DocumentFileItems
+                    .Where(x => x.Id == doc.Id)
+                    .ExecuteUpdateAsync(x => x.SetProperty(y => y.Content, doc.Content));
+                
+                fixedCount++;
+                Log.Information("修复了文档 {DocumentId} 的Mermaid语法", doc.Id);
+            }
+        }
+        
+        Log.Information("批量修复完成，共修复了 {FixedCount} 个文档", fixedCount);
+        return fixedCount;
+    }
+
+    /// <summary>
+    /// 批量修复所有Mermaid语法错误的API端点
+    /// </summary>
+    [HttpPost("/fix-mermaid")]
+    [EndpointSummary("批量修复数据库中所有Mermaid语法错误")]
+    public async Task<object> FixMermaidSyntaxAsync()
+    {
+        try
+        {
+            var fixedCount = await BatchFixMermaidSyntaxAsync();
+            return new { success = true, fixedCount, message = $"成功修复了 {fixedCount} 个文档的Mermaid语法错误" };
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "批量修复Mermaid语法时发生错误");
+            return new { success = false, message = ex.Message };
+        }
+    }
 }
 
 /// <summary>

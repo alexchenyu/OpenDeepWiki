@@ -614,9 +614,68 @@ public partial class DocumentPendingService
             // Fix variable syntax like ${S} - remove or replace with valid text
             fixedLine = Regex.Replace(fixedLine, @"\$\{[^}]*\}", "Variable");
             
-            // Fix node definitions with brackets - remove parentheses from node labels
+            // Fix subgraph syntax errors - ensure proper format
+            if (fixedLine.StartsWith("subgraph "))
+            {
+                // Fix patterns like "subgraph Yocto层C D Eendstyle A fill"
+                var subgraphPattern = @"^subgraph\s+([^E]*?)E?end\s*style.*";
+                var match = Regex.Match(fixedLine, subgraphPattern);
+                if (match.Success)
+                {
+                    var subgraphName = match.Groups[1].Value.Trim();
+                    // Clean up the subgraph name - remove invalid characters and extra words
+                    subgraphName = Regex.Replace(subgraphName, @"[^\w\u4e00-\u9fa5\s]", "");
+                    subgraphName = subgraphName.Split(' ')[0]; // Take only first word
+                    fixedLine = $"subgraph {subgraphName}";
+                }
+                else
+                {
+                    // Basic cleanup for subgraph lines
+                    fixedLine = Regex.Replace(fixedLine, @"subgraph\s+([^\s]+).*", "subgraph $1");
+                }
+            }
+            
+            // Fix standalone "end" statements that might be malformed
+            if (fixedLine.StartsWith("end") && fixedLine.Length > 3)
+            {
+                // If "end" is followed by other content, separate it
+                if (Regex.IsMatch(fixedLine, @"^end\w+"))
+                {
+                    fixedLine = "end";
+                }
+            }
+            
+            // Fix style syntax errors
+            if (fixedLine.StartsWith("style ") || fixedLine.Contains("style "))
+            {
+                // Fix malformed style statements
+                var stylePattern = @"style\s+(\w+)\s+fill\s*:?\s*([^,;\s]+)";
+                var styleMatch = Regex.Match(fixedLine, stylePattern);
+                if (styleMatch.Success)
+                {
+                    var nodeId = styleMatch.Groups[1].Value;
+                    var fillColor = styleMatch.Groups[2].Value;
+                    fixedLine = $"style {nodeId} fill:{fillColor}";
+                }
+                else
+                {
+                    // Remove malformed style lines
+                    continue;
+                }
+            }
+            
+            // Fix node definitions with brackets - remove parentheses and nested brackets from node labels
             fixedLine = Regex.Replace(fixedLine, @"\[([^\]]*)\([^\)]*\)([^\]]*)\]", "[$1$2]");
             fixedLine = Regex.Replace(fixedLine, @"\[([^\]]*)\（([^\）]*)\）([^\]]*)\]", "[$1$2$3]");
+            
+            // Fix nested brackets in node labels like [setup <machine> [build_dir]]
+            fixedLine = Regex.Replace(fixedLine, @"\[([^\[\]]*)\[([^\]]*)\]([^\]]*)\]", "[$1$2$3]");
+            
+            // Fix multiple closing brackets like ]]
+            fixedLine = Regex.Replace(fixedLine, @"\]\]", "]");
+            
+            // Fix angle brackets in node labels
+            fixedLine = Regex.Replace(fixedLine, @"\[([^\]]*)<([^>]*)>([^\]]*)\]", "[$1$2$3]");
             
             // Fix unclosed quotes in notes
             if (fixedLine.Contains("note ") && fixedLine.Contains("\""))
@@ -667,6 +726,13 @@ public partial class DocumentPendingService
                     }
                     return m.Value;
                 });
+            }
+            
+            // Remove lines that are clearly malformed and can't be fixed
+            if (Regex.IsMatch(fixedLine, @"^[A-Z]\s+[A-Z]\s+[A-Z]end") || 
+                Regex.IsMatch(fixedLine, @"^\w+\s+fill\s*$"))
+            {
+                continue;
             }
             
             fixedLines.Add(fixedLine);
