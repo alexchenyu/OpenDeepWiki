@@ -175,6 +175,45 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
     setEstimatedHeight(newHeight)
   }, [chart, estimateChartHeight])
 
+  // Client-side Mermaid syntax repair as last resort
+  const attemptClientSideRepair = useCallback((code: string): string => {
+    let fixed = code.trim()
+
+    // Fix 1: Remove variable syntax like ${var}
+    fixed = fixed.replace(/\$\{[^}]*\}/g, 'Variable')
+
+    // Fix 2: Fix style syntax - ensure commas between properties
+    fixed = fixed.replace(/style\s+(\S+)\s+fill\s*:\s*([^\s,;]+)\s+(\w+)/g, 'style $1 fill:$2,$3')
+
+    // Fix 3: Fix incomplete arrows ending with short words like "Err"
+    fixed = fixed.replace(/-->\s*Err\b/g, '--> Error')
+
+    // Fix 4: Ensure subgraph declarations are on separate lines
+    fixed = fixed.replace(/subgraph\s+(\S+)\s+([A-Za-z0-9_]+\[)/g, 'subgraph $1\n    $2')
+
+    // Fix 5: Ensure "end" is on its own line
+    fixed = fixed.replace(/end\s+([A-Za-z0-9_]+\[)/g, 'end\n    $1')
+
+    // Fix 6: Fix note syntax in state diagrams
+    fixed = fixed.replace(/note\s+(right|left)\s+o[^:]*:\s*(.+)/g, (_, dir, text) => {
+      const cleanText = text.replace(/"/g, '').trim()
+      return `note ${dir}: "${cleanText}"`
+    })
+
+    // Fix 7: Remove malformed style lines that can't be fixed
+    const lines = fixed.split('\n')
+    const cleanedLines = lines.filter(line => {
+      const trimmed = line.trim()
+      // Remove lines like "Hardware fill:#bfb 1"
+      if (/^(fill|stroke|Hardware)\s+fill\s*:/.test(trimmed)) {
+        return false
+      }
+      return true
+    })
+
+    return cleanedLines.join('\n')
+  }, [])
+
   const configureMermaid = () => {
     mermaid.initialize({
       startOnLoad: false,
@@ -568,10 +607,13 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
         ref.current.innerHTML = ''
 
         // Clean and validate chart content
-        const cleanChart = chart.trim()
+        let cleanChart = chart.trim()
         if (!cleanChart) {
           throw new Error('Empty chart content')
         }
+
+        // Apply client-side repair before rendering
+        cleanChart = attemptClientSideRepair(cleanChart)
 
         // 首先检查缓存
         const cachedSvg = mermaidCache.get(cleanChart)
@@ -665,7 +707,7 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
 
     const timeoutId = setTimeout(renderMermaid, 100)
     return () => clearTimeout(timeoutId)
-  }, [chart, chartHash])
+  }, [chart, chartHash, attemptClientSideRepair])
 
   // Render modal content when modal opens
   useEffect(() => {
@@ -677,10 +719,13 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
         modalRef.current.innerHTML = ''
 
         // Clean and validate chart content
-        const cleanChart = chart.trim()
+        let cleanChart = chart.trim()
         if (!cleanChart) {
           throw new Error('Empty chart content')
         }
+
+        // Apply client-side repair before rendering
+        cleanChart = attemptClientSideRepair(cleanChart)
 
         // 首先检查缓存
         const cachedSvg = mermaidCache.get(cleanChart)
@@ -745,7 +790,7 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
       const timeoutId = setTimeout(renderModalMermaid, 100)
       return () => clearTimeout(timeoutId)
     }
-  }, [isOpen, chart, chartHash])
+  }, [isOpen, chart, chartHash, attemptClientSideRepair])
 
   // 组件卸载时的清理（开发环境下的调试信息）
   useEffect(() => {
@@ -773,11 +818,34 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
 
   if (isError) {
     return (
-      <div className="my-6 rounded-lg border border-border bg-muted/30 p-4">
-        <div className="mb-2 text-sm text-muted-foreground">Mermaid 渲染失败，显示原始代码：</div>
-        <pre className="overflow-x-auto text-sm">
-          <code className="language-mermaid">{chart}</code>
-        </pre>
+      <div className="my-6 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+        <div className="flex items-start gap-3">
+          <div className="flex-shrink-0 mt-0.5">
+            <svg className="h-5 w-5 text-destructive" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-destructive mb-2">图表渲染失败</div>
+            <div className="text-xs text-muted-foreground mb-3">
+              Mermaid图表包含语法错误。常见问题：
+              <ul className="list-disc list-inside mt-1 space-y-0.5">
+                <li>节点ID包含空格或特殊字符（应使用字母、数字、下划线）</li>
+                <li>subgraph声明格式不正确（应单独一行）</li>
+                <li>样式语法缺少分隔符（应使用逗号）</li>
+                <li>箭头连接不完整</li>
+              </ul>
+            </div>
+            <details className="text-xs">
+              <summary className="cursor-pointer text-muted-foreground hover:text-foreground mb-2">
+                显示原始代码
+              </summary>
+              <pre className="overflow-x-auto text-xs bg-muted/50 p-3 rounded border border-border mt-2">
+                <code className="language-mermaid">{chart}</code>
+              </pre>
+            </details>
+          </div>
+        </div>
       </div>
     )
   }

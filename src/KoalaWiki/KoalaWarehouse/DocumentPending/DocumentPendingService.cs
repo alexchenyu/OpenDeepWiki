@@ -598,12 +598,33 @@ public partial class DocumentPendingService
 
     private static string FixMermaidCode(string mermaidCode)
     {
-        var lines = mermaidCode.Split('\n');
+        // 预处理：移除前导/尾随空白
+        mermaidCode = mermaidCode.Trim();
+
+        var lines = mermaidCode.Split('\n').ToList();
         var fixedLines = new List<string>();
-        
-        foreach (var line in lines)
+
+        static string ExtractTail(string line, string keyword)
         {
-            var fixedLine = line.Trim();
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                return string.Empty;
+            }
+
+            var index = line.IndexOf(keyword, StringComparison.OrdinalIgnoreCase);
+            if (index < 0)
+            {
+                return string.Empty;
+            }
+
+            var tail = line.Substring(index + keyword.Length).Trim();
+            return tail;
+        }
+
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var originalLine = lines[i];
+            var fixedLine = originalLine.Trim();
             
             // Skip empty lines
             if (string.IsNullOrWhiteSpace(fixedLine))
@@ -617,55 +638,209 @@ public partial class DocumentPendingService
             // Fix subgraph syntax errors - ensure proper format
             if (fixedLine.StartsWith("subgraph "))
             {
-                // Fix patterns like "subgraph Yocto层C D Eendstyle A fill"
-                var subgraphPattern = @"^subgraph\s+([^E]*?)E?end\s*style.*";
-                var match = Regex.Match(fixedLine, subgraphPattern);
-                if (match.Success)
+                // Extract the declared subgraph name and separate trailing content (like node definitions)
+                var subgraphMatch = Regex.Match(fixedLine, @"^subgraph\s+(""[^""]+""|\w+)(.*)$");
+                if (subgraphMatch.Success)
                 {
-                    var subgraphName = match.Groups[1].Value.Trim();
-                    // Clean up the subgraph name - remove invalid characters and extra words
-                    subgraphName = Regex.Replace(subgraphName, @"[^\w\u4e00-\u9fa5\s]", "");
-                    subgraphName = subgraphName.Split(' ')[0]; // Take only first word
-                    fixedLine = $"subgraph {subgraphName}";
+                    var rawName = subgraphMatch.Groups[1].Value.Trim();
+                    var tail = subgraphMatch.Groups[2].Value.Trim();
+
+                    string cleanName;
+                    if (rawName.StartsWith('"') && rawName.EndsWith('"'))
+                    {
+                        cleanName = rawName;
+                    }
+                    else
+                    {
+                        cleanName = Regex.Replace(rawName, @"[^\w\u4e00-\u9fa5\s]", "");
+                        cleanName = cleanName.Split(' ')[0];
+                        cleanName = cleanName.Length == 0 ? "Subgraph" : cleanName;
+                    }
+
+                    fixedLine = $"subgraph {cleanName}";
+
+                    if (!string.IsNullOrEmpty(tail))
+                    {
+                        var splitTail = tail.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                        var buffer = new List<string>();
+
+                        foreach (var token in splitTail)
+                        {
+                            // Check if token already contains a connector or arrow
+                            if (token.Contains("--") || token.Contains("==") || token.Contains("::") || token.Contains("-->") || token.Contains("==>"))
+                            {
+                                if (buffer.Count > 0)
+                                {
+                                    lines.Insert(i + 1, string.Join(' ', buffer));
+                                    buffer.Clear();
+                                    i++;
+                                }
+
+                                lines.Insert(i + 1, token);
+                                i++;
+                            }
+                            else if (Regex.IsMatch(token, @"^[A-Za-z0-9_.]+\["))
+                            {
+                                // Node definition without connector - buffer it
+                                buffer.Add(token);
+                            }
+                            else
+                            {
+                                buffer.Add(token);
+                            }
+                        }
+
+                        if (buffer.Count > 0)
+                        {
+                            lines.Insert(i + 1, string.Join(' ', buffer));
+                            i++;
+                        }
+                    }
                 }
-                else
+
+                // Handle cases where the next line contains raw node definitions without connectors
+                if (i + 1 < lines.Count)
                 {
-                    // Basic cleanup for subgraph lines
-                    fixedLine = Regex.Replace(fixedLine, @"subgraph\s+([^\s]+).*", "subgraph $1");
+                    var nextLine = lines[i + 1].Trim();
+                    if (Regex.IsMatch(nextLine, @"^[A-Za-z0-9_.]+\s*\["))
+                    {
+                        lines[i + 1] = ""; // remove it from its current position
+                        lines.Insert(i + 1, nextLine);
+                    }
                 }
             }
             
             // Fix standalone "end" statements that might be malformed
+            if (fixedLine.StartsWith("endsubgraph", StringComparison.OrdinalIgnoreCase))
+            {
+                var tail = ExtractTail(originalLine, "endsubgraph");
+                fixedLine = "end";
+
+                if (!string.IsNullOrEmpty(tail))
+                {
+                    var splitTail = tail.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                    var buffer = new List<string>();
+
+                    foreach (var token in splitTail)
+                    {
+                        if (token.Contains("--") || token.Contains("==") || token.Contains("::") || token.Contains("-->") || token.Contains("==>"))
+                        {
+                            if (buffer.Count > 0)
+                            {
+                                lines.Insert(i + 1, string.Join(' ', buffer));
+                                buffer.Clear();
+                                i++;
+                            }
+
+                            lines.Insert(i + 1, token);
+                            i++;
+                        }
+                        else if (Regex.IsMatch(token, @"^[A-Za-z0-9_.]+\["))
+                        {
+                            buffer.Add(token);
+                        }
+                        else
+                        {
+                            buffer.Add(token);
+                        }
+                    }
+
+                    if (buffer.Count > 0)
+                    {
+                        lines.Insert(i + 1, string.Join(' ', buffer));
+                        i++;
+                    }
+                }
+            }
+
             if (fixedLine.StartsWith("end") && fixedLine.Length > 3)
             {
                 // If "end" is followed by other content, separate it
                 if (Regex.IsMatch(fixedLine, @"^end\w+"))
                 {
+                    var tail = ExtractTail(originalLine, "end");
                     fixedLine = "end";
+
+                    if (!string.IsNullOrEmpty(tail))
+                    {
+                        lines.Insert(i + 1, tail);
+                    }
                 }
             }
             
-            // Fix style syntax errors
+            // Fix style syntax errors - CRITICAL FIX for errors like "fill:#f9f 1"
             if (fixedLine.StartsWith("style ") || fixedLine.Contains("style "))
             {
-                // Fix malformed style statements
-                var stylePattern = @"style\s+(\w+)\s+fill\s*:?\s*([^,;\s]+)";
+                // Pattern to match: style <nodeId> fill:<color> [other properties]
+                // Must ensure proper comma/semicolon separation
+                var stylePattern = @"style\s+(""[^""]+""|[A-Za-z0-9_]+)\s+fill\s*:+\s*([^\s,;]+)(.*)";
                 var styleMatch = Regex.Match(fixedLine, stylePattern);
                 if (styleMatch.Success)
                 {
                     var nodeId = styleMatch.Groups[1].Value;
                     var fillColor = styleMatch.Groups[2].Value;
-                    fixedLine = $"style {nodeId} fill:{fillColor}";
+                    var remaining = styleMatch.Groups[3].Value.Trim();
+
+                    // Clean up color value - remove trailing numbers or invalid chars
+                    fillColor = Regex.Replace(fillColor, @"[^#a-fA-F0-9]", "");
+
+                    // If color is too short (like #f9f), ensure it's valid hex
+                    if (fillColor.StartsWith("#") && fillColor.Length == 4)
+                    {
+                        // #f9f is valid CSS shorthand, keep it
+                    }
+                    else if (fillColor.StartsWith("#") && fillColor.Length < 4)
+                    {
+                        // Invalid color, use default
+                        fillColor = "#f9f9f9";
+                    }
+
+                    // Parse remaining properties
+                    if (!string.IsNullOrEmpty(remaining))
+                    {
+                        // Ensure proper comma separation
+                        remaining = Regex.Replace(remaining, @"\s+", ",");
+                        fixedLine = $"style {nodeId} fill:{fillColor},{remaining}";
+                    }
+                    else
+                    {
+                        fixedLine = $"style {nodeId} fill:{fillColor}";
+                    }
                 }
                 else
                 {
-                    // Remove malformed style lines
-                    continue;
+                    // Try simpler pattern for basic style declarations
+                    var simplePattern = @"style\s+(""[^""]+""|[A-Za-z0-9_]+)(.*)";
+                    var simpleMatch = Regex.Match(fixedLine, simplePattern);
+                    if (simpleMatch.Success)
+                    {
+                        var nodeId = simpleMatch.Groups[1].Value;
+                        var props = simpleMatch.Groups[2].Value.Trim();
+
+                        // Clean up properties: replace spaces with commas between property pairs
+                        props = Regex.Replace(props, @"([a-z-]+)\s*:\s*([^\s,;]+)\s+", "$1:$2,");
+                        props = Regex.Replace(props, @"([a-z-]+)\s*:\s*([^\s,;]+)$", "$1:$2");
+
+                        if (!string.IsNullOrEmpty(props))
+                        {
+                            fixedLine = $"style {nodeId} {props}";
+                        }
+                        else
+                        {
+                            // Remove empty style declarations
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        // Malformed beyond repair, remove it
+                        continue;
+                    }
                 }
             }
             
             // Fix node definitions with brackets - remove parentheses and nested brackets from node labels
-            fixedLine = Regex.Replace(fixedLine, @"\[([^\]]*)\([^\)]*\)([^\]]*)\]", "[$1$2]");
+            fixedLine = Regex.Replace(fixedLine, @"\[([^\]]*)\([^)\]]*\)([^\]]*)\]", "[$1$2]");
             fixedLine = Regex.Replace(fixedLine, @"\[([^\]]*)\（([^\）]*)\）([^\]]*)\]", "[$1$2$3]");
             
             // Fix nested brackets in node labels like [setup <machine> [build_dir]]
@@ -676,6 +851,14 @@ public partial class DocumentPendingService
             
             // Fix angle brackets in node labels
             fixedLine = Regex.Replace(fixedLine, @"\[([^\]]*)<([^>]*)>([^\]]*)\]", "[$1$2$3]");
+            
+            // Fix raw node definitions without proper spacing after subgraph/end
+            fixedLine = Regex.Replace(fixedLine, @"^(subgraph|end)(\s+[A-Za-z0-9_.]+\[)", m =>
+            {
+                var keyword = m.Groups[1].Value;
+                var rest = m.Groups[2].Value.TrimStart();
+                return $"{keyword}\n{rest}";
+            });
             
             // Fix unclosed quotes in notes
             if (fixedLine.Contains("note ") && fixedLine.Contains("\""))
@@ -758,15 +941,68 @@ public partial class DocumentPendingService
             }
             
             // Remove lines that are clearly malformed and can't be fixed
-            if (Regex.IsMatch(fixedLine, @"^[A-Z]\s+[A-Z]\s+[A-Z]end") || 
-                Regex.IsMatch(fixedLine, @"^\w+\s+fill\s*$"))
+            if (Regex.IsMatch(fixedLine, @"^[A-Z]\s+[A-Z]\s+[A-Z]end") ||
+                Regex.IsMatch(fixedLine, @"^\w+\s+fill\s*$") ||
+                Regex.IsMatch(fixedLine, @"^(fill|stroke|Hardware)\s+fill\s*:"))
             {
                 continue;
             }
-            
+
+            // Fix node IDs with dashes or spaces - replace with underscores
+            // Pattern: NodeId[Label] or NodeId --> OtherNode
+            fixedLine = Regex.Replace(fixedLine, @"([A-Za-z0-9]+)[-\s]([A-Za-z0-9]+)(\[|-->|===|---|\||::)", m =>
+            {
+                var part1 = m.Groups[1].Value;
+                var part2 = m.Groups[2].Value;
+                var symbol = m.Groups[3].Value;
+                return $"{part1}_{part2}{symbol}";
+            });
+
+            // Fix STATE_DIAGRAM specific issues - note syntax
+            if (fixedLine.Contains("note right") || fixedLine.Contains("note left"))
+            {
+                // Ensure note text is properly quoted
+                fixedLine = Regex.Replace(fixedLine, @"note\s+(right|left)\s+o[^:]*:?\s*(.+)", m =>
+                {
+                    var direction = m.Groups[1].Value;
+                    var text = m.Groups[2].Value.Trim();
+                    // Remove any unmatched quotes
+                    text = text.Replace("\"", "");
+                    return $"note {direction}: \"{text}\"";
+                });
+            }
+
+            // Fix CLASS_DIAGRAM specific issues
+            if (fixedLine.Contains("class ") && fixedLine.Contains("{"))
+            {
+                // Ensure class definitions are properly formatted
+                fixedLine = Regex.Replace(fixedLine, @"class\s+([A-Za-z0-9_]+)\s*\{", "class $1 {");
+            }
+
             fixedLines.Add(fixedLine);
         }
-        
-        return string.Join("\n", fixedLines);
+
+        // Post-processing: Remove consecutive empty lines
+        var result = new List<string>();
+        bool lastWasEmpty = false;
+        foreach (var line in fixedLines)
+        {
+            var trimmed = line.Trim();
+            if (string.IsNullOrEmpty(trimmed))
+            {
+                if (!lastWasEmpty)
+                {
+                    result.Add(string.Empty);
+                    lastWasEmpty = true;
+                }
+            }
+            else
+            {
+                result.Add(line);
+                lastWasEmpty = false;
+            }
+        }
+
+        return string.Join("\n", result);
     }
 }

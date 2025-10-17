@@ -22,6 +22,15 @@ public static class PromptExtensions
                 - CREATE comprehensive documentation that explains WHY, not just WHAT
                 - BASE all technical claims on observable code patterns, never assumptions
                 - INCLUDE minimum 5 Mermaid diagrams visualizing system architecture and flows
+                - VALIDATE every Mermaid diagram strictly following these MANDATORY rules:
+                  * Node IDs: ONLY alphanumeric + underscores (A-Za-z0-9_), NO spaces/dashes
+                  * Subgraphs: MUST be on separate lines, format: `subgraph identifier` then content then `end`
+                  * End keyword: MUST be alone on its line with NO trailing text
+                  * Styles: Use semicolons, e.g., `style A fill:#fff,stroke:#000,stroke-width:2px`
+                  * Arrows: MUST be complete (both ends defined), NO truncated nodes like `Err`
+                  * NO variable syntax like `${var}` - use plain text instead
+                  * Labels: NO unmatched brackets, angle brackets, or nested brackets
+                  * Participants: Wrap names with spaces in quotes: `participant "User Service"`
                 
                 **PHASE 3: QUALITY ENHANCEMENT**
                 - VERIFY completeness using Docs.Read to review the entire document

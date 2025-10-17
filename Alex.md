@@ -46,13 +46,13 @@ git clone https://github.com/AIDotNet/OpenDeepWiki.git
 ./deploy-fix.sh
 
 # 方法2：手动执行（完整版，前台运行）
-COMPOSE="docker compose"
+COMPOSE="sudo docker compose"
 sudo make down-mem0                   # 停止所有服务
-sudo $COMPOSE -f docker-compose-mem0.yml down --volumes --remove-orphans
-sudo $COMPOSE -f docker-compose-mem0.yml build --no-cache mem0 koalawiki
-sudo rm -rf data/ postgres_db/ neo4j_data/  # 清理数据库（可选）
+$COMPOSE -f docker-compose-mem0.yml down --volumes --remove-orphans
+$COMPOSE -f docker-compose-mem0.yml build --no-cache mem0 koalawiki
+# sudo rm -rf data/ postgres_db/ neo4j_data/  # 清理数据库（可选）
 rm mem0.log
-make dev-mem0 2>&1 | tee mem0.log
+sudo make dev-mem0 2>&1 | tee mem0.log
 
 # sudo make down-mem0 
 # sudo docker compose -f docker-compose-mem0.yml down
@@ -185,3 +185,199 @@ curl -s "http://localhost:8080/api/DocumentCatalog/DocumentCatalogs?organization
 - ✅ 完整的英文版OpenBMC文档  
 - ✅ 支持在前端界面切换语言查看
 - ✅ 左侧目录树会根据语言设置显示对应的翻译内容
+---
+
+## Mermaid 图表修复工具
+
+### 问题描述
+现有文档中可能包含Mermaid语法错误，导致图表渲染失败。常见错误包括：
+- 样式语法错误（如 `fill:#f9f 1`）
+- Subgraph格式错误（节点声明应分行）
+- 箭头不完整（如 `A --> Err`）
+- 节点ID包含空格或特殊字符
+- State diagram的note语法错误
+
+### 准备工作：获取管理员Token
+
+修复工具需要管理员权限，首先需要获取Token：
+
+#### 方法1：使用脚本获取（推荐）
+
+```bash
+# 交互式获取Token（会提示输入账号密码）
+./get_token.sh
+
+# 或直接提供账号密码
+./get_token.sh mobilechina@gmail.com admin
+
+# 查看数据库中的所有用户
+./get_token.sh --list-users
+```
+
+脚本会：
+- 显示你的Token
+- 自动保存到 `.admin_token` 文件
+- 提供使用说明
+
+#### 方法2：通过API登录
+
+```bash
+# 登录获取Token
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"email":"mobilechina@gmail.com","password":"admin"}' \
+  http://localhost:8080/api/auth/LoginAsync | jq -r '.token'
+```
+
+#### 使用Token
+
+获取Token后，有三种使用方式：
+
+```bash
+# 方式1：环境变量（推荐，一次设置多次使用）
+export ADMIN_TOKEN="your_token_here"
+./repair_mermaid.sh stats
+
+# 方式2：自动读取 .admin_token 文件（get_token.sh会自动创建）
+./repair_mermaid.sh stats
+
+# 方式3：交互式输入（脚本会提示你输入）
+./repair_mermaid.sh stats
+# 然后粘贴Token
+```
+
+### 使用修复工具
+
+#### 方式1：使用Shell脚本（推荐）
+
+```bash
+# 查看统计信息
+./repair_mermaid.sh stats
+
+# 预览修复（不实际修改）
+./repair_mermaid.sh preview
+
+# 执行修复（实际修改数据库）
+./repair_mermaid.sh repair
+
+# 修复指定仓库
+REPO_ID="abc123def456"
+./repair_mermaid.sh preview $REPO_ID  # 预览
+./repair_mermaid.sh repair $REPO_ID   # 执行
+
+# 修复单个文档
+DOC_ID="doc123abc456"
+./repair_mermaid.sh doc $DOC_ID preview  # 预览
+./repair_mermaid.sh doc $DOC_ID          # 执行
+```
+
+#### 方式2：直接调用API
+
+```bash
+# 设置Token
+TOKEN="your_admin_token_here"
+
+# 1. 获取统计信息
+curl -X GET \
+  -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8080/api/MermaidRepair/GetMermaidRepairStatsAsync"
+
+# 2. 预览所有文档的修复
+curl -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8080/api/MermaidRepair/RepairAllMermaidDiagramsAsync?dryRun=true&limit=10"
+
+# 3. 执行所有文档的修复
+curl -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8080/api/MermaidRepair/RepairAllMermaidDiagramsAsync?dryRun=false"
+
+# 4. 修复指定仓库
+REPO_ID="abc123def456"
+curl -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8080/api/MermaidRepair/RepairWarehouseMermaidDiagramsAsync?warehouseId=$REPO_ID&dryRun=false"
+
+# 5. 修复单个文档
+DOC_ID="doc123abc456"
+curl -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8080/api/MermaidRepair/RepairDocumentMermaidAsync?documentId=$DOC_ID&dryRun=false"
+```
+
+### 修复规则
+
+修复工具会自动处理以下问题：
+
+1. **样式语法修复**
+   - `style A fill:#f9f 1` → `style A fill:#f9f`
+   - 确保属性用逗号分隔
+   - 移除无效的尾随字符
+
+2. **Subgraph格式修复**
+   - `subgraph "名称"A[Node]` → 分离为两行
+   - 确保`end`关键字单独一行
+
+3. **节点ID标准化**
+   - `User-Auth` → `User_Auth`
+   - 移除空格和特殊字符
+
+4. **箭头修复**
+   - `A --> Err` → `A --> Error`
+   - 确保箭头连接完整
+
+5. **变量语法移除**
+   - `${var}` → `Variable`
+
+6. **State diagram note修复**
+   - `note right o Scale:` → `note right: "Scale"`
+
+### 修复输出示例
+
+```json
+{
+  "success": true,
+  "dryRun": false,
+  "summary": {
+    "totalProcessed": 25,
+    "modified": 18,
+    "unchanged": 6,
+    "errors": 1
+  },
+  "details": [
+    {
+      "documentId": "abc123",
+      "documentTitle": "系统架构",
+      "modified": true,
+      "message": "Mermaid语法已修复"
+    }
+  ]
+}
+```
+
+### 注意事项
+
+1. **建议先预览**: 使用 `dryRun=true` 查看将要修改的内容
+2. **需要管理员权限**: 批量修复需要admin角色
+3. **数据库直接修改**: 修复操作会直接更新数据库
+4. **备份建议**: 重要数据建议先备份数据库
+5. **新文档自动修复**: 新生成的文档会自动应用修复规则
+
+### 获取仓库ID
+
+```bash
+# 通过名称查询仓库ID
+docker exec -it opendeepwiki-postgres-1 psql -U postgres -d KoalaWiki -c \
+  "SELECT \"Id\", \"OrganizationName\", \"Name\", \"Branch\" FROM \"Warehouses\" WHERE \"Name\" = 'your-repo-name';"
+```
+
+### 故障排除
+
+```bash
+# 查看修复日志
+docker logs opendeepwiki-koalawiki-1 | grep -i "mermaid\|repair"
+
+# 如果修复失败，检查文档内容
+docker exec -it opendeepwiki-postgres-1 psql -U postgres -d KoalaWiki -c \
+  "SELECT \"Id\", \"Title\", LENGTH(\"Content\") as content_length FROM \"DocumentFileItems\" WHERE \"Content\" LIKE '%\`\`\`mermaid%' LIMIT 5;"
+```

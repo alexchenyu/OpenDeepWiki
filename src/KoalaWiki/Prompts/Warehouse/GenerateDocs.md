@@ -83,9 +83,57 @@ Create the COMPLETE documentation in ONE comprehensive Docs.Write operation. Thi
 ### Architecture Overview
 ```mermaid
 graph TB
-    [Comprehensive system architecture diagram]
+    A[Comprehensive system architecture diagram]
 ```
 [Detailed explanation of the architecture diagram]
+
+**CRITICAL MERMAID SYNTAX RULES - MUST FOLLOW STRICTLY:**
+
+1. **Node IDs**: ONLY use alphanumeric characters and underscores (A-Za-z0-9_). NO spaces, dashes, or special chars in IDs
+   - ✅ CORRECT: `UserAuth[User Authentication]`, `API_Gateway[API Gateway]`
+   - ❌ WRONG: `User-Auth[User Authentication]`, `API Gateway[API Gateway]`
+
+2. **Subgraphs**: MUST be on separate lines with ONLY identifier/title
+   - ✅ CORRECT:
+     ```
+     subgraph Frontend
+         WebApp[Web Application]
+     end
+     ```
+   - ❌ WRONG: `subgraph Frontend WebApp[Web Application] end`
+
+3. **End Keyword**: MUST be alone on its line with NO trailing content
+   - ✅ CORRECT: `end`
+   - ❌ WRONG: `end API_Gateway[API Gateway]`
+
+4. **Style Syntax**: MUST use semicolons to separate properties
+   - ✅ CORRECT: `style NodeA fill:#f9f,stroke:#333,stroke-width:2px`
+   - ❌ WRONG: `style NodeA fill:#f9f stroke:#333`
+
+5. **Complete Arrows**: ALL arrows must connect complete, valid node IDs
+   - ✅ CORRECT: `Start --> Process --> End`
+   - ❌ WRONG: `Start --> Process -->` or `A --> Err`
+
+6. **No Variables**: Do NOT use variable syntax like `${var}`
+   - ✅ CORRECT: `ConfigValue[Configuration Value]`
+   - ❌ WRONG: `${Config}[Configuration]`
+
+7. **Label Characters**: Avoid unmatched brackets, angle brackets, or special quotes in labels
+   - ✅ CORRECT: `Node[Process Data]`
+   - ❌ WRONG: `Node[Process <Data>]`, `Node[Data [raw]]`
+
+8. **Participant Names**: In sequence diagrams, wrap names with spaces in quotes
+   - ✅ CORRECT: `participant "User Service"` or `participant UserService`
+   - ❌ WRONG: `participant User Service`
+
+**VALIDATION CHECKLIST** (verify EVERY diagram):
+- [ ] All node IDs are alphanumeric with underscores only
+- [ ] Subgraph declarations are on separate lines
+- [ ] Every `end` keyword is alone on its line
+- [ ] Style statements use semicolons between properties
+- [ ] All arrows have complete source and target nodes
+- [ ] No variable syntax (`${}`) is used
+- [ ] Labels are clean with no nested brackets or angle brackets
 
 ## Core Components Analysis
 
@@ -115,15 +163,24 @@ classDiagram
 
 ```mermaid
 sequenceDiagram
-    [Sequence diagram showing critical flows]
+    participant System
+    participant Component
+    participant External
+    System->>Component: Call
+    Component->>External: Integrate
+    External-->>Component: Result
+    Component-->>System: Response
 ```
 
 ### Data Management and State
 [600+ words on data flow, persistence, state management]
 
 ```mermaid
-flowchart LR
-    [Data flow visualization]
+graph LR
+    DataInput[Data Input]
+    DataProcessor[Data Processor]
+    DataOutput[Data Output]
+    DataInput --> DataProcessor --> DataOutput
 ```
 
 ### API Design and Integration
@@ -144,7 +201,10 @@ flowchart LR
 
 ```mermaid
 stateDiagram-v2
-    [State management diagram]
+    [*] --> Idle
+    Idle --> Processing
+    Processing --> Complete
+    Complete --> [*]
 ```
 
 ### Scalability Analysis
@@ -163,7 +223,10 @@ stateDiagram-v2
 ### Deployment Architecture
 ```mermaid
 graph LR
-    [Deployment topology]
+    Dev[Development Environment]
+    Staging[Staging Environment]
+    Prod[Production Environment]
+    Dev --> Staging --> Prod
 ```
 
 ### Configuration and Environment Management

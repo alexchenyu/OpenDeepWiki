@@ -89,7 +89,7 @@ public class DataMigrationTask(IServiceProvider service) : BackgroundService
             Id = Guid.NewGuid().ToString("N"),
             Name = "admin",
             Password = "admin",
-            Email = "239573049@qq.com",
+            Email = "mobilechina@gmail.com",
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
             Avatar = "/avatar.png",
