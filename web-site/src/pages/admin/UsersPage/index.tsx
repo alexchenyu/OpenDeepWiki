@@ -1,6 +1,6 @@
 // 用户管理页面
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -34,6 +34,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Search, Plus, MoreHorizontal, Edit, Trash2, UserPlus, Filter, Key } from 'lucide-react'
 import { userService, roleService, type UserInfo, type RoleInfo } from '@/services/admin.service'
 import { toast } from 'sonner'
+import { getErrorMessage } from '@/lib/errors'
 import UserDialog from '@/components/admin/UserDialog'
 import UserRoleDialog from '@/components/admin/UserRoleDialog'
 import UserPasswordDialog from '@/components/admin/UserPasswordDialog'
@@ -59,52 +60,49 @@ const UsersPage: React.FC = () => {
   const [selectedUser, setSelectedUser] = useState<UserInfo | null>(null)
 
   // 加载用户数据
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     try {
       setLoading(true)
-      const response = await userService.getUserList(currentPage, pageSize, searchQuery || undefined)as any
-      // 处理嵌套的data结构
-      const data = response.data || response
-      setUsers(data.items || [])
-      setTotal(data.total || 0)
+      const response = await userService.getUserList(currentPage, pageSize, searchQuery || undefined)
+      setUsers(response.items || [])
+      setTotal(response.total || 0)
     } catch (error) {
+      const message = getErrorMessage(error, '无法加载用户列表')
       console.error('Failed to load users:', error)
       toast.error('加载失败', {
-        description: '无法加载用户列表'
+        description: message
       })
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentPage, pageSize, searchQuery])
 
   // 加载角色列表
-  const loadRoles = async () => {
+  const loadRoles = useCallback(async () => {
     try {
-      const response = await roleService.getAllRoles() as any
-      // 确保 response 是数组
-      const rolesData = Array.isArray(response) ? response : (response?.data || [])
-      setRoles(rolesData)
+      const response = await roleService.getAllRoles()
+      setRoles(Array.isArray(response) ? response : [])
     } catch (error) {
       console.error('Failed to load roles:', error)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    loadUsers()
-    loadRoles()
-  }, [currentPage])
+    void loadUsers()
+    void loadRoles()
+  }, [loadUsers, loadRoles])
 
   // 搜索防抖
   useEffect(() => {
     const timer = setTimeout(() => {
       if (currentPage === 1) {
-        loadUsers()
+        void loadUsers()
       } else {
         setCurrentPage(1)
       }
     }, 500)
     return () => clearTimeout(timer)
-  }, [searchQuery])
+  }, [searchQuery, currentPage, loadUsers])
 
   const getRoleBadge = (role?: string) => {
     if (!role) return null
@@ -141,11 +139,12 @@ const UsersPage: React.FC = () => {
       toast.success('删除成功', {
         description: '用户已被删除'
       })
-      loadUsers()
+      await loadUsers()
       setSelectedUserIds(prev => prev.filter(userId => userId !== id))
     } catch (error) {
+      const message = getErrorMessage(error, '无法删除用户')
       toast.error('删除失败', {
-        description: '无法删除用户'
+        description: message
       })
     }
   }
@@ -426,7 +425,7 @@ const UsersPage: React.FC = () => {
         onOpenChange={setUserDialogOpen}
         user={selectedUser}
         onSuccess={() => {
-          loadUsers()
+          void loadUsers()
           resetSelection()
         }}
       />
@@ -436,7 +435,7 @@ const UsersPage: React.FC = () => {
         onOpenChange={setUserRoleDialogOpen}
         user={selectedUser}
         onSuccess={() => {
-          loadUsers()
+          void loadUsers()
           resetSelection()
         }}
       />
@@ -446,7 +445,7 @@ const UsersPage: React.FC = () => {
         onOpenChange={setUserPasswordDialogOpen}
         user={selectedUser}
         onSuccess={() => {
-          loadUsers()
+          void loadUsers()
           resetSelection()
         }}
       />
@@ -456,7 +455,7 @@ const UsersPage: React.FC = () => {
         onOpenChange={setBatchDeleteDialogOpen}
         users={getSelectedUsers()}
         onSuccess={() => {
-          loadUsers()
+          void loadUsers()
           resetSelection()
         }}
       />

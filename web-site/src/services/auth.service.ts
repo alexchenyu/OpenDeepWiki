@@ -46,6 +46,47 @@ export interface RegisterRequest {
   confirmPassword: string
 }
 
+type UnknownRecord = Record<string, unknown>
+
+interface RawLoginPayload extends Partial<LoginResponse> {
+  Success?: boolean
+  Token?: string
+  RefreshToken?: string
+  User?: LoginResponse['user']
+  ErrorMessage?: string
+}
+
+interface WrappedResponse<T> {
+  code: number
+  data?: T
+  message?: string
+  success?: boolean
+}
+
+const isUnknownRecord = (value: unknown): value is UnknownRecord =>
+  typeof value === 'object' && value !== null
+
+const isWrappedLoginResponse = (value: unknown): value is WrappedResponse<RawLoginPayload> =>
+  isUnknownRecord(value) && typeof value.code === 'number'
+
+const isLoginResponse = (value: unknown): value is LoginResponse =>
+  isUnknownRecord(value) && typeof value.success === 'boolean'
+
+const normalizeLoginPayload = (payload: RawLoginPayload): LoginResponse => ({
+  success: Boolean(payload.success ?? payload.Success),
+  token: (payload.token ?? payload.Token) ?? undefined,
+  refreshToken: (payload.refreshToken ?? payload.RefreshToken) ?? undefined,
+  user: (payload.user ?? payload.User) ?? undefined,
+  errorMessage: (payload.errorMessage ?? payload.ErrorMessage) ?? undefined
+})
+
+const wrapLoginResponse = (data: LoginResponse): { data: LoginResponse } => ({ data })
+
+const isWrappedThirdPartyResponse = (
+  value: unknown
+): value is WrappedResponse<ThirdPartyLoginProvider[]> =>
+  isUnknownRecord(value) && typeof value.code === 'number'
+
 class AuthService {
   private basePath = '/api/Auth'
 
@@ -53,70 +94,79 @@ class AuthService {
    * 用户登录
    */
   async login(username: string, password: string): Promise<{ data: LoginResponse }> {
-    const response = await fetchService.post<any>(`${this.basePath}/Login`, {
+    const response = await fetchService.post<unknown>(`${this.basePath}/Login`, {
       username,
       password,
     })
 
-    // 处理后端返回的嵌套数据结构并转换字段名
-    if (response.code === 200 && response.data) {
-      const loginData = response.data
-      return {
-        data: {
-          success: loginData.success || loginData.Success,
-          token: loginData.token || loginData.Token,
-          refreshToken: loginData.refreshToken || loginData.RefreshToken,
-          user: loginData.user || loginData.User,
-          errorMessage: loginData.errorMessage || loginData.ErrorMessage
-        }
-      }
+    if (isWrappedLoginResponse(response) && response.data) {
+      return wrapLoginResponse(normalizeLoginPayload(response.data))
+    }
+
+    if (isLoginResponse(response)) {
+      return wrapLoginResponse(response)
     }
 
     // 兼容直接返回的格式
-    return { data: response }
+    return wrapLoginResponse({
+      success: false,
+      token: undefined,
+      refreshToken: undefined,
+      user: undefined,
+      errorMessage: isUnknownRecord(response) && typeof response.message === 'string'
+        ? response.message
+        : '登录失败'
+    })
   }
 
   /**
    * 用户注册
    */
   async register(data: RegisterRequest): Promise<{ data: LoginResponse }> {
-    const response = await fetchService.post<any>(`${this.basePath}/Register`, {
+    const response = await fetchService.post<unknown>(`${this.basePath}/Register`, {
       userName: data.username,
       email: data.email,
       password: data.password
     })
 
-    // 处理后端返回的嵌套数据结构并转换字段名
-    if (response.code === 200 && response.data) {
-      const loginData = response.data
-      return {
-        data: {
-          success: loginData.success || loginData.Success,
-          token: loginData.token || loginData.Token,
-          refreshToken: loginData.refreshToken || loginData.RefreshToken,
-          user: loginData.user || loginData.User,
-          errorMessage: loginData.errorMessage || loginData.ErrorMessage
-        }
-      }
+    if (isWrappedLoginResponse(response) && response.data) {
+      return wrapLoginResponse(normalizeLoginPayload(response.data))
     }
 
-    // 兼容直接返回的格式
-    return { data: response }
+    if (isLoginResponse(response)) {
+      return wrapLoginResponse(response)
+    }
+
+    return wrapLoginResponse({
+      success: false,
+      token: undefined,
+      refreshToken: undefined,
+      user: undefined,
+      errorMessage: isUnknownRecord(response) && typeof response.message === 'string'
+        ? response.message
+        : '注册失败'
+    })
   }
 
   /**
    * 获取支持的第三方登录方式
    */
   async getSupportedThirdPartyLogins(): Promise<ThirdPartyLoginResponse> {
-    const response = await fetchService.get<any>(`${this.basePath}/GetSupportedThirdPartyLogins`)
+    const response = await fetchService.get<unknown>(`${this.basePath}/GetSupportedThirdPartyLogins`)
 
-    // 如果响应被包装，则解包
-    if (response.code !== undefined && response.data !== undefined) {
-      return response
+    if (isWrappedThirdPartyResponse(response)) {
+      return {
+        code: response.code,
+        data: response.data,
+        message: response.message
+      }
     }
 
-    // 否则构造标准响应格式
-    return { code: 200, data: response }
+    if (Array.isArray(response)) {
+      return { code: 200, data: response }
+    }
+
+    return { code: 200, data: [], message: undefined }
   }
 
   /**

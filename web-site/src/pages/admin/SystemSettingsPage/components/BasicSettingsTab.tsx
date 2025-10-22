@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { SystemSetting, ValidationErrors } from '@/types/systemSettings'
+import type { SettingUpdateValue } from '../types'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,7 +17,7 @@ import { useToast } from '@/hooks/useToast'
 
 interface BasicSettingsTabProps {
   settings: SystemSetting[]
-  onUpdate: (key: string, value: any) => void
+  onUpdate: (key: string, value: SettingUpdateValue) => void
   validationErrors: ValidationErrors
   loading?: boolean
 }
@@ -30,9 +31,16 @@ const BasicSettingsTab: React.FC<BasicSettingsTabProps> = ({
   const { t } = useTranslation()
   const { toast } = useToast()
 
-  const getSettingValue = (key: string) => {
+  const getSettingValue = (key: string): string => {
     const setting = settings.find(s => s.key === key)
-    return setting?.value || setting?.defaultValue || ''
+    const value = setting?.value ?? setting?.defaultValue
+    if (typeof value === 'string') {
+      return value
+    }
+    if (value === null || value === undefined) {
+      return ''
+    }
+    return String(value)
   }
 
   const handleFileUpload = async (key: string, file: File) => {
@@ -76,6 +84,7 @@ const BasicSettingsTab: React.FC<BasicSettingsTabProps> = ({
         throw new Error('Upload failed')
       }
     } catch (error) {
+      console.error('Failed to upload image:', error)
       toast({
         title: t('settings.uploadFailed'),
         variant: 'destructive',

@@ -1,7 +1,6 @@
 // 用户密码重置对话框
 
 import React, { useState } from 'react'
-import { useTranslation } from 'react-i18next'
 import {
   Dialog,
   DialogContent,
@@ -32,7 +31,6 @@ const UserPasswordDialog: React.FC<UserPasswordDialogProps> = ({
   user,
   onSuccess
 }) => {
-  const { t } = useTranslation()
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState({
     newPassword: '',
@@ -84,8 +82,17 @@ const UserPasswordDialog: React.FC<UserPasswordDialogProps> = ({
 
       onOpenChange(false)
       onSuccess?.()
-    } catch (error: any) {
-      const message = error?.response?.data?.message || error?.message || '重置失败'
+    } catch (error: unknown) {
+      const message = (() => {
+        if (typeof error === 'string') {
+          return error
+        }
+        if (error && typeof error === 'object') {
+          const maybeError = error as { response?: { data?: { message?: string } }; message?: string }
+          return maybeError.response?.data?.message ?? maybeError.message ?? '重置失败'
+        }
+        return '重置失败'
+      })()
       toast.error('重置失败', {
         description: message
       })

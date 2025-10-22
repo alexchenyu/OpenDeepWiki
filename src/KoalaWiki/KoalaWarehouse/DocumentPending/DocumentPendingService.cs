@@ -1,4 +1,8 @@
-﻿namespace KoalaWiki.KoalaWarehouse.DocumentPending;
+﻿using System.Linq;
+using System.Text;
+using KoalaWiki.KoalaWarehouse.Mermaid;
+
+namespace KoalaWiki.KoalaWarehouse.DocumentPending;
 
 public partial class DocumentPendingService
 {
@@ -598,411 +602,112 @@ public partial class DocumentPendingService
 
     private static string FixMermaidCode(string mermaidCode)
     {
-        // 预处理：移除前导/尾随空白
+        // ========== 混合策略：验证 + 安全修复 + 优雅降级 ==========
+        //
+        // 流程：
+        // 1. 先验证原始代码
+        // 2. 如果失败，尝试应用安全的已知修复
+        // 3. 再次验证修复后的代码
+        // 4. 仍然失败 → 保存原始代码并记录错误（优雅降级）
+        //
+        // 优势：
+        // - 修复确定的错误（如 note after [*]）
+        // - 不破坏未知情况
+        // - 用户总能看到内容（即使可能有错误）
+        // - 详细日志用于改进 Prompt
+
+        var originalCode = mermaidCode;
         mermaidCode = mermaidCode.Trim();
 
-        var lines = mermaidCode.Split('\n').ToList();
-        var fixedLines = new List<string>();
-
-        static string ExtractTail(string line, string keyword)
+        if (string.IsNullOrWhiteSpace(mermaidCode))
         {
-            if (string.IsNullOrWhiteSpace(line))
-            {
-                return string.Empty;
-            }
-
-            var index = line.IndexOf(keyword, StringComparison.OrdinalIgnoreCase);
-            if (index < 0)
-            {
-                return string.Empty;
-            }
-
-            var tail = line.Substring(index + keyword.Length).Trim();
-            return tail;
+            Log.Logger.Warning("Empty Mermaid code received");
+            return BuildFallbackDiagram("Empty mermaid code", originalCode);
         }
 
-        for (var i = 0; i < lines.Count; i++)
+        // Step 1: 验证原始代码
+        var validation = MermaidValidatorService.Validate(mermaidCode);
+
+        if (validation.IsValid)
         {
-            var originalLine = lines[i];
-            var fixedLine = originalLine.Trim();
-            
-            // Skip empty lines
-            if (string.IsNullOrWhiteSpace(fixedLine))
-            {
-                continue;
-            }
-            
-            // Fix variable syntax like ${S} - remove or replace with valid text
-            fixedLine = Regex.Replace(fixedLine, @"\$\{[^}]*\}", "Variable");
-            
-            // Fix subgraph syntax errors - ensure proper format
-            if (fixedLine.StartsWith("subgraph "))
-            {
-                // Extract the declared subgraph name and separate trailing content (like node definitions)
-                var subgraphMatch = Regex.Match(fixedLine, @"^subgraph\s+(""[^""]+""|\w+)(.*)$");
-                if (subgraphMatch.Success)
-                {
-                    var rawName = subgraphMatch.Groups[1].Value.Trim();
-                    var tail = subgraphMatch.Groups[2].Value.Trim();
-
-                    string cleanName;
-                    if (rawName.StartsWith('"') && rawName.EndsWith('"'))
-                    {
-                        cleanName = rawName;
-                    }
-                    else
-                    {
-                        cleanName = Regex.Replace(rawName, @"[^\w\u4e00-\u9fa5\s]", "");
-                        cleanName = cleanName.Split(' ')[0];
-                        cleanName = cleanName.Length == 0 ? "Subgraph" : cleanName;
-                    }
-
-                    fixedLine = $"subgraph {cleanName}";
-
-                    if (!string.IsNullOrEmpty(tail))
-                    {
-                        var splitTail = tail.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-                        var buffer = new List<string>();
-
-                        foreach (var token in splitTail)
-                        {
-                            // Check if token already contains a connector or arrow
-                            if (token.Contains("--") || token.Contains("==") || token.Contains("::") || token.Contains("-->") || token.Contains("==>"))
-                            {
-                                if (buffer.Count > 0)
-                                {
-                                    lines.Insert(i + 1, string.Join(' ', buffer));
-                                    buffer.Clear();
-                                    i++;
-                                }
-
-                                lines.Insert(i + 1, token);
-                                i++;
-                            }
-                            else if (Regex.IsMatch(token, @"^[A-Za-z0-9_.]+\["))
-                            {
-                                // Node definition without connector - buffer it
-                                buffer.Add(token);
-                            }
-                            else
-                            {
-                                buffer.Add(token);
-                            }
-                        }
-
-                        if (buffer.Count > 0)
-                        {
-                            lines.Insert(i + 1, string.Join(' ', buffer));
-                            i++;
-                        }
-                    }
-                }
-
-                // Handle cases where the next line contains raw node definitions without connectors
-                if (i + 1 < lines.Count)
-                {
-                    var nextLine = lines[i + 1].Trim();
-                    if (Regex.IsMatch(nextLine, @"^[A-Za-z0-9_.]+\s*\["))
-                    {
-                        lines[i + 1] = ""; // remove it from its current position
-                        lines.Insert(i + 1, nextLine);
-                    }
-                }
-            }
-            
-            // Fix standalone "end" statements that might be malformed
-            if (fixedLine.StartsWith("endsubgraph", StringComparison.OrdinalIgnoreCase))
-            {
-                var tail = ExtractTail(originalLine, "endsubgraph");
-                fixedLine = "end";
-
-                if (!string.IsNullOrEmpty(tail))
-                {
-                    var splitTail = tail.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-                    var buffer = new List<string>();
-
-                    foreach (var token in splitTail)
-                    {
-                        if (token.Contains("--") || token.Contains("==") || token.Contains("::") || token.Contains("-->") || token.Contains("==>"))
-                        {
-                            if (buffer.Count > 0)
-                            {
-                                lines.Insert(i + 1, string.Join(' ', buffer));
-                                buffer.Clear();
-                                i++;
-                            }
-
-                            lines.Insert(i + 1, token);
-                            i++;
-                        }
-                        else if (Regex.IsMatch(token, @"^[A-Za-z0-9_.]+\["))
-                        {
-                            buffer.Add(token);
-                        }
-                        else
-                        {
-                            buffer.Add(token);
-                        }
-                    }
-
-                    if (buffer.Count > 0)
-                    {
-                        lines.Insert(i + 1, string.Join(' ', buffer));
-                        i++;
-                    }
-                }
-            }
-
-            if (fixedLine.StartsWith("end") && fixedLine.Length > 3)
-            {
-                // If "end" is followed by other content, separate it
-                if (Regex.IsMatch(fixedLine, @"^end\w+"))
-                {
-                    var tail = ExtractTail(originalLine, "end");
-                    fixedLine = "end";
-
-                    if (!string.IsNullOrEmpty(tail))
-                    {
-                        lines.Insert(i + 1, tail);
-                    }
-                }
-            }
-            
-            // Fix style syntax errors - CRITICAL FIX for errors like "fill:#f9f 1"
-            if (fixedLine.StartsWith("style ") || fixedLine.Contains("style "))
-            {
-                // Pattern to match: style <nodeId> fill:<color> [other properties]
-                // Must ensure proper comma/semicolon separation
-                var stylePattern = @"style\s+(""[^""]+""|[A-Za-z0-9_]+)\s+fill\s*:+\s*([^\s,;]+)(.*)";
-                var styleMatch = Regex.Match(fixedLine, stylePattern);
-                if (styleMatch.Success)
-                {
-                    var nodeId = styleMatch.Groups[1].Value;
-                    var fillColor = styleMatch.Groups[2].Value;
-                    var remaining = styleMatch.Groups[3].Value.Trim();
-
-                    // Clean up color value - remove trailing numbers or invalid chars
-                    fillColor = Regex.Replace(fillColor, @"[^#a-fA-F0-9]", "");
-
-                    // If color is too short (like #f9f), ensure it's valid hex
-                    if (fillColor.StartsWith("#") && fillColor.Length == 4)
-                    {
-                        // #f9f is valid CSS shorthand, keep it
-                    }
-                    else if (fillColor.StartsWith("#") && fillColor.Length < 4)
-                    {
-                        // Invalid color, use default
-                        fillColor = "#f9f9f9";
-                    }
-
-                    // Parse remaining properties
-                    if (!string.IsNullOrEmpty(remaining))
-                    {
-                        // Ensure proper comma separation
-                        remaining = Regex.Replace(remaining, @"\s+", ",");
-                        fixedLine = $"style {nodeId} fill:{fillColor},{remaining}";
-                    }
-                    else
-                    {
-                        fixedLine = $"style {nodeId} fill:{fillColor}";
-                    }
-                }
-                else
-                {
-                    // Try simpler pattern for basic style declarations
-                    var simplePattern = @"style\s+(""[^""]+""|[A-Za-z0-9_]+)(.*)";
-                    var simpleMatch = Regex.Match(fixedLine, simplePattern);
-                    if (simpleMatch.Success)
-                    {
-                        var nodeId = simpleMatch.Groups[1].Value;
-                        var props = simpleMatch.Groups[2].Value.Trim();
-
-                        // Clean up properties: replace spaces with commas between property pairs
-                        props = Regex.Replace(props, @"([a-z-]+)\s*:\s*([^\s,;]+)\s+", "$1:$2,");
-                        props = Regex.Replace(props, @"([a-z-]+)\s*:\s*([^\s,;]+)$", "$1:$2");
-
-                        if (!string.IsNullOrEmpty(props))
-                        {
-                            fixedLine = $"style {nodeId} {props}";
-                        }
-                        else
-                        {
-                            // Remove empty style declarations
-                            continue;
-                        }
-                    }
-                    else
-                    {
-                        // Malformed beyond repair, remove it
-                        continue;
-                    }
-                }
-            }
-            
-            // Fix node definitions with brackets - remove parentheses and nested brackets from node labels
-            fixedLine = Regex.Replace(fixedLine, @"\[([^\]]*)\([^)\]]*\)([^\]]*)\]", "[$1$2]");
-            fixedLine = Regex.Replace(fixedLine, @"\[([^\]]*)\（([^\）]*)\）([^\]]*)\]", "[$1$2$3]");
-            
-            // Fix nested brackets in node labels like [setup <machine> [build_dir]]
-            fixedLine = Regex.Replace(fixedLine, @"\[([^\[\]]*)\[([^\]]*)\]([^\]]*)\]", "[$1$2$3]");
-            
-            // Fix multiple closing brackets like ]]
-            fixedLine = Regex.Replace(fixedLine, @"\]\]", "]");
-            
-            // Fix angle brackets in node labels
-            fixedLine = Regex.Replace(fixedLine, @"\[([^\]]*)<([^>]*)>([^\]]*)\]", "[$1$2$3]");
-            
-            // Fix raw node definitions without proper spacing after subgraph/end
-            fixedLine = Regex.Replace(fixedLine, @"^(subgraph|end)(\s+[A-Za-z0-9_.]+\[)", m =>
-            {
-                var keyword = m.Groups[1].Value;
-                var rest = m.Groups[2].Value.TrimStart();
-                return $"{keyword}\n{rest}";
-            });
-            
-            // Fix unclosed quotes in notes
-            if (fixedLine.Contains("note ") && fixedLine.Contains("\""))
-            {
-                var quoteCount = fixedLine.Count(c => c == '"');
-                if (quoteCount % 2 == 1) // Odd number of quotes means unclosed
-                {
-                    fixedLine += "\""; // Close the quote
-                }
-            }
-            
-            // Fix arrow syntax issues - ensure proper spacing and complete connections
-            fixedLine = Regex.Replace(fixedLine, @"(\w+)\s*-->\s*$", "$1 --> End");
-            fixedLine = Regex.Replace(fixedLine, @"-->\s*\[", " --> [");
-            
-            // Fix incomplete arrow connections like "Scale --> IdleRun --> Err"
-            // Ensure all nodes in arrow chains are properly defined
-            if (fixedLine.Contains("-->"))
-            {
-                // Handle multiple arrows in one line
-                var arrowPattern = @"(\w+)\s*-->\s*(\w+)\s*-->\s*(\w+)";
-                var arrowMatch = Regex.Match(fixedLine, arrowPattern);
-                if (arrowMatch.Success)
-                {
-                    var node1 = arrowMatch.Groups[1].Value;
-                    var node2 = arrowMatch.Groups[2].Value;
-                    var node3 = arrowMatch.Groups[3].Value;
-                    
-                    // Ensure node names are valid (no partial words)
-                    if (node3.Length < 3 || node3 == "Err")
-                    {
-                        node3 = "Error";
-                    }
-                    
-                    fixedLine = Regex.Replace(fixedLine, arrowPattern, $"{node1} --> {node2}\n    {node2} --> {node3}");
-                }
-                
-                // Fix single incomplete arrows
-                fixedLine = Regex.Replace(fixedLine, @"-->\s*(\w{1,2})\b", " --> Error");
-                
-                // Fix arrows pointing to incomplete words
-                fixedLine = Regex.Replace(fixedLine, @"-->\s*Err\b", " --> Error");
-            }
-            
-            // Fix duplicate node names in flowcharts
-            if (fixedLine.Contains("-->") && fixedLine.Contains("[") && fixedLine.Contains("]"))
-            {
-                // Pattern like: NodeA[Label] --> NodeB[Label]
-                var nodePattern = @"(\w+)\[([^\]]+)\]\s*-->\s*(\w+)\[([^\]]+)\]";
-                var nodeMatch = Regex.Match(fixedLine, nodePattern);
-                if (nodeMatch.Success)
-                {
-                    var sourceNode = nodeMatch.Groups[1].Value;
-                    var sourceLabel = nodeMatch.Groups[2].Value;
-                    var targetNode = nodeMatch.Groups[3].Value;
-                    var targetLabel = nodeMatch.Groups[4].Value;
-                    
-                    // Ensure nodes have different names
-                    if (sourceNode == targetNode)
-                    {
-                        targetNode += "2";
-                    }
-                    
-                    fixedLine = $"{sourceNode}[{sourceLabel}] --> {targetNode}[{targetLabel}]";
-                }
-            }
-            
-            // Fix sequence diagram participant names with spaces
-            if (fixedLine.StartsWith("participant "))
-            {
-                fixedLine = Regex.Replace(fixedLine, @"participant\s+(.+)", m =>
-                {
-                    var participantName = m.Groups[1].Value.Trim();
-                    if (participantName.Contains(" ") && !participantName.StartsWith("\""))
-                    {
-                        return $"participant \"{participantName}\"";
-                    }
-                    return m.Value;
-                });
-            }
-            
-            // Remove lines that are clearly malformed and can't be fixed
-            if (Regex.IsMatch(fixedLine, @"^[A-Z]\s+[A-Z]\s+[A-Z]end") ||
-                Regex.IsMatch(fixedLine, @"^\w+\s+fill\s*$") ||
-                Regex.IsMatch(fixedLine, @"^(fill|stroke|Hardware)\s+fill\s*:"))
-            {
-                continue;
-            }
-
-            // Fix node IDs with dashes or spaces - replace with underscores
-            // Pattern: NodeId[Label] or NodeId --> OtherNode
-            fixedLine = Regex.Replace(fixedLine, @"([A-Za-z0-9]+)[-\s]([A-Za-z0-9]+)(\[|-->|===|---|\||::)", m =>
-            {
-                var part1 = m.Groups[1].Value;
-                var part2 = m.Groups[2].Value;
-                var symbol = m.Groups[3].Value;
-                return $"{part1}_{part2}{symbol}";
-            });
-
-            // Fix STATE_DIAGRAM specific issues - note syntax
-            if (fixedLine.Contains("note right") || fixedLine.Contains("note left"))
-            {
-                // Ensure note text is properly quoted
-                fixedLine = Regex.Replace(fixedLine, @"note\s+(right|left)\s+o[^:]*:?\s*(.+)", m =>
-                {
-                    var direction = m.Groups[1].Value;
-                    var text = m.Groups[2].Value.Trim();
-                    // Remove any unmatched quotes
-                    text = text.Replace("\"", "");
-                    return $"note {direction}: \"{text}\"";
-                });
-            }
-
-            // Fix CLASS_DIAGRAM specific issues
-            if (fixedLine.Contains("class ") && fixedLine.Contains("{"))
-            {
-                // Ensure class definitions are properly formatted
-                fixedLine = Regex.Replace(fixedLine, @"class\s+([A-Za-z0-9_]+)\s*\{", "class $1 {");
-            }
-
-            fixedLines.Add(fixedLine);
+            Log.Logger.Debug("Mermaid diagram validated successfully");
+            return mermaidCode;
         }
 
-        // Post-processing: Remove consecutive empty lines
-        var result = new List<string>();
-        bool lastWasEmpty = false;
-        foreach (var line in fixedLines)
+        // Step 2: 尝试安全修复
+        Log.Logger.Information(
+            "Mermaid validation failed, attempting safe fixes. Error: {Error}",
+            validation.GetSummary()
+        );
+
+        var fixedCode = MermaidSimpleFixer.ApplySafeFixes(mermaidCode);
+
+        // Step 3: 验证修复后的代码
+        if (fixedCode != mermaidCode)
         {
-            var trimmed = line.Trim();
-            if (string.IsNullOrEmpty(trimmed))
+            var fixedValidation = MermaidValidatorService.Validate(fixedCode);
+
+            if (fixedValidation.IsValid)
             {
-                if (!lastWasEmpty)
-                {
-                    result.Add(string.Empty);
-                    lastWasEmpty = true;
-                }
+                Log.Logger.Information("Mermaid diagram fixed and validated successfully");
+                return fixedCode;
             }
-            else
-            {
-                result.Add(line);
-                lastWasEmpty = false;
-            }
+
+            Log.Logger.Warning(
+                "Mermaid fixes applied but validation still failed. Error: {Error}",
+                fixedValidation.GetSummary()
+            );
         }
 
-        return string.Join("\n", result);
+        // Step 4: 优雅降级 - 保存原始代码并标记
+        //
+        // 为什么保存原始代码而不是 fallback？
+        // 1. 前端 Mermaid.js 可能更宽容，有可能成功渲染
+        // 2. 用户至少能看到文本内容，可以手动修复
+        // 3. 显示 fallback 会丢失所有信息
+        // 4. 错误已记录，可用于改进 Prompt
+
+        Log.Logger.Error(
+            "Mermaid validation failed after fixes. " +
+            "Saving original code with error marker. " +
+            "Error: {Error} | Original: {Original}",
+            validation.GetSummary(),
+            originalCode.Length > 200 ? originalCode.Substring(0, 200) + "..." : originalCode
+        );
+
+        // 在代码中添加注释标记，但保留原始内容
+        var markedCode = $"%% ⚠️ Warning: This diagram failed validation\n" +
+                         $"%% Error: {validation.GetSummary()}\n" +
+                         $"%% The diagram may not render correctly\n" +
+                         $"\n{originalCode}";
+
+        return markedCode;
+    }
+
+    /// <summary>
+    /// Build a fallback diagram to display when validation fails
+    /// </summary>
+    private static string BuildFallbackDiagram(string reason, string original)
+    {
+        original ??= string.Empty;
+        var truncated = string.Join(" | ", original.Split('\n')
+            .Select(line => line.Trim())
+            .Where(line => line.Length > 0)
+            .Take(5));
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"%% Mermaid validation failed: {reason}");
+        if (!string.IsNullOrWhiteSpace(truncated))
+        {
+            sb.AppendLine($"%% Original (truncated): {truncated}");
+        }
+
+        sb.AppendLine("graph TD");
+        sb.AppendLine("    Start[\"⚠️ 图表渲染失败\"]");
+        sb.AppendLine($"    Start --> Error[\"错误: {reason}\"]");
+        sb.AppendLine("    Error --> Action[\"请查看日志获取详细信息\"]");
+        sb.AppendLine("    Action --> Improve[\"建议: 改进 AI Prompt 以避免语法错误\"]");
+
+        return sb.ToString();
     }
 }

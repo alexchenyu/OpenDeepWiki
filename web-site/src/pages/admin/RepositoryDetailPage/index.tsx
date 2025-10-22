@@ -20,13 +20,9 @@ import {
   ChevronLeft,
   ChevronDown,
   ChevronRight,
-  File,
   Save,
   RefreshCw,
   FileText,
-  Code,
-  Image,
-  Database,
   Search,
   Edit3,
   Trash2,
@@ -44,7 +40,7 @@ import {
   Loader2
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { type WarehouseInfo, type RepositoryLogDto, type WarehouseSyncRecord, repositoryService } from '@/services/admin.service'
+import { type WarehouseInfo, type WarehouseSyncRecord, repositoryService } from '@/services/admin.service'
 import { toast } from 'sonner'
 
 // 延迟加载 MarkdownEditor 组件
@@ -63,6 +59,8 @@ interface TreeNode {
   lastModified?: string
   content?: string // 明确定义为字符串类型
   catalog?: DocumentCatalog
+  progress?: number
+  disabled?: boolean
 }
 
 interface DocumentCatalog {
@@ -112,9 +110,7 @@ const RepositoryDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [stats, setStats] = useState<RepositoryStats | null>(null)
-  const [logs, setLogs] = useState<RepositoryLogDto[]>([])
   const [activeTab, setActiveTab] = useState('documents')
-  const [editMode, setEditMode] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [syncDialogOpen, setSyncDialogOpen] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
@@ -132,18 +128,18 @@ const RepositoryDetailPage: React.FC = () => {
   })
 
   // 收集所有可展开的节点ID
-  const collectExpandableNodes = useCallback((nodes: any[]): string[] => {
+  const collectExpandableNodes = useCallback((nodes: TreeNode[]): string[] => {
     const nodeIds: string[] = []
 
-    const traverse = (nodeList: any[]) => {
-      nodeList.forEach(node => {
+    const traverse = (nodeList: TreeNode[]) => {
+      nodeList.forEach((node) => {
         const nodeId = node.key || node.id || ''
-        const isFolder = !node.isLeaf
-        const hasChildren = isFolder && node.children && Array.isArray(node.children) && node.children.length > 0
+        const children = node.children ?? []
+        const hasChildren = children.length > 0
 
         if (hasChildren) {
           nodeIds.push(nodeId)
-          traverse(node.children)
+          traverse(children)
         }
       })
     }
@@ -165,13 +161,13 @@ const RepositoryDetailPage: React.FC = () => {
         setRepository(repoResponse)
 
         // 获取文档目录树 - 使用DocumentCatalogs接口
-        const { data } = await repositoryService.getDocumentCatalogs(id) as any
-        if (data && Array.isArray(data)) {
+        const catalogTree = await repositoryService.getDocumentCatalogs(id)
+        if (Array.isArray(catalogTree) && catalogTree.length > 0) {
           // 后端已经返回TreeNode格式的树形结构，直接使用
-          setTreeData(data)
+          setTreeData(catalogTree)
 
           // 自动展开所有可展开的节点
-          const expandableNodeIds = collectExpandableNodes(data)
+          const expandableNodeIds = collectExpandableNodes(catalogTree)
           setExpandedNodes(new Set(expandableNodeIds))
         } else {
           setTreeData([])
@@ -179,9 +175,6 @@ const RepositoryDetailPage: React.FC = () => {
 
         // 获取仓库统计信息
         await loadRepositoryStats(id)
-
-        // 获取操作日志
-        await loadRepositoryLogs(id)
 
         // 获取同步记录
         await loadSyncRecords(id)
@@ -195,7 +188,7 @@ const RepositoryDetailPage: React.FC = () => {
     }
 
     loadRepositoryData()
-  }, [id])
+  }, [id, collectExpandableNodes, t])
 
   const loadRepositoryStats = async (repoId: string) => {
     try {
@@ -227,15 +220,6 @@ const RepositoryDetailPage: React.FC = () => {
     }
   }
 
-  const loadRepositoryLogs = async (repoId: string) => {
-    try {
-      const response = await repositoryService.getRepositoryLogs(repoId, 1, 20)
-      setLogs(response.items || [])
-    } catch (error) {
-      console.error('Failed to load repository logs:', error)
-    }
-  }
-
   const loadSyncRecords = async (warehouseId: string) => {
     try {
       const response = await repositoryService.getWarehouseSyncRecords(warehouseId, 1, 10)
@@ -245,9 +229,19 @@ const RepositoryDetailPage: React.FC = () => {
     }
   }
 
-  const handleNodeClick = useCallback((node: any, isExpandToggle: boolean = false) => {
+  const loadFileContent = useCallback(async (catalogId: string) => {
+    try {
+      const content = await repositoryService.getFileContent(catalogId)
+      const contentStr = typeof content === 'string' ? content : String(content ?? '')
+      setSelectedNode((prev) => (prev ? { ...prev, content: contentStr } : null))
+    } catch (error) {
+      console.error('Failed to load file content:', error)
+    }
+  }, [])
+
+  const handleNodeClick = useCallback((node: TreeNode, isExpandToggle: boolean = false) => {
     const nodeId = node.key || node.id || ''
-    const isFolder = !node.isLeaf
+    const isFolder = node.isLeaf === false || Boolean(node.children?.length)
 
     // 总是设置选中的节点（无论是文件夹还是文件）
     setSelectedNode(node)
@@ -268,26 +262,13 @@ const RepositoryDetailPage: React.FC = () => {
 
       // 如果文件夹有内容可以加载，也加载内容
       if (node.catalog?.id) {
-        loadFileContent(node.catalog.id)
+        void loadFileContent(node.catalog.id)
       }
-    } else {
+    } else if (node.catalog?.id) {
       // 如果是文档目录，加载文件内容
-      if (node.catalog?.id) {
-        loadFileContent(node.catalog.id)
-      }
+      void loadFileContent(node.catalog.id)
     }
-  }, [])
-
-  const loadFileContent = async (catalogId: string) => {
-    try {
-      const { data } = await repositoryService.getFileContent(catalogId) as any
-      // 确保content是字符串类型
-      const contentStr = typeof data === 'string' ? data : String(data || '')
-      setSelectedNode(prev => prev ? { ...prev, content: contentStr } : null)
-    } catch (error) {
-      console.error('Failed to load file content:', error)
-    }
-  }
+  }, [loadFileContent])
 
   const handleContentChange = (content: string) => {
     if (selectedNode) {
@@ -308,6 +289,7 @@ const RepositoryDetailPage: React.FC = () => {
       await repositoryService.saveFileContent(selectedNode.catalog!.id, contentStr)
       toast.success(t('admin.repositories.detail.file_save_success'))
     } catch (error) {
+      console.error('Failed to save repository file content:', error)
       toast.error(t('admin.repositories.detail.file_save_failed'))
     } finally {
       setSaving(false)
@@ -327,6 +309,7 @@ const RepositoryDetailPage: React.FC = () => {
         window.location.reload()
       }, 1000)
     } catch (error) {
+      console.error('Failed to refresh repository:', error)
       toast.error(t('admin.repositories.detail.repository_refresh_failed'))
     } finally {
       setRefreshing(false)
@@ -341,6 +324,7 @@ const RepositoryDetailPage: React.FC = () => {
       toast.success(t('admin.repositories.detail.repository_delete_success'))
       navigate('/admin/repositories')
     } catch (error) {
+      console.error('Failed to delete repository:', error)
       toast.error(t('admin.repositories.detail.repository_delete_failed'))
     }
   }
@@ -357,6 +341,7 @@ const RepositoryDetailPage: React.FC = () => {
       await loadRepositoryStats(id)
       await loadSyncRecords(id)
     } catch (error) {
+      console.error('Failed to trigger repository sync:', error)
       toast.error(t('admin.repositories.detail.sync_start_failed'))
     }
   }
@@ -370,6 +355,7 @@ const RepositoryDetailPage: React.FC = () => {
       setRepository(prev => prev ? { ...prev, enableSync: enabled } : null)
       toast.success(enabled ? '已启用自动同步' : '已禁用自动同步')
     } catch (error) {
+      console.error('Failed to update sync setting:', error)
       toast.error('更新同步设置失败')
     } finally {
       setUpdatingSyncSetting(false)
@@ -392,6 +378,7 @@ const RepositoryDetailPage: React.FC = () => {
       document.body.removeChild(a)
       toast.success(t('admin.repositories.detail.export_success'))
     } catch (error) {
+      console.error('Failed to export repository markdown:', error)
       toast.error(t('admin.repositories.detail.export_failed'))
     }
   }
@@ -429,6 +416,7 @@ const RepositoryDetailPage: React.FC = () => {
       const repoResponse = await repositoryService.getRepositoryDetail(id)
       setRepository(repoResponse)
     } catch (error) {
+      console.error('Failed to update repository settings:', error)
       toast.error('更新失败，请稍后重试')
     }
   }
@@ -467,46 +455,15 @@ const RepositoryDetailPage: React.FC = () => {
   }
 
 
-  // 获取文件图标
-  const getFileIcon = (fileName: string) => {
-    if (!fileName || typeof fileName !== 'string') return <File className="h-4 w-4 text-gray-600" />
-    const extension = fileName.split('.').pop()?.toLowerCase()
-
-    switch (extension) {
-      case 'md':
-        return <FileText className="h-4 w-4 text-blue-600" />
-      case 'js':
-      case 'ts':
-      case 'jsx':
-      case 'tsx':
-      case 'cs':
-      case 'py':
-      case 'java':
-        return <Code className="h-4 w-4 text-green-600" />
-      case 'png':
-      case 'jpg':
-      case 'jpeg':
-      case 'gif':
-      case 'svg':
-        return <Image className="h-4 w-4 text-purple-600" />
-      case 'json':
-      case 'xml':
-      case 'yml':
-      case 'yaml':
-        return <Database className="h-4 w-4 text-orange-600" />
-      default:
-        return <File className="h-4 w-4 text-muted-foreground" />
-    }
-  }
-
   // 渲染文件树节点 - 完全参考 FumadocsSidebar 的实现
-  const renderTreeNode = useCallback((node: any, level: number = 0) => {
+  const renderTreeNode = useCallback((node: TreeNode, level: number = 0) => {
     const nodeId = node.key || node.id || ''
     const nodeName = node.title || node.name || ''
-    const isFolder = !node.isLeaf
+    const children = node.children ?? []
+    const isFolder = node.isLeaf === false || children.length > 0
     const isExpanded = expandedNodes.has(nodeId)
     const isSelected = selectedNode?.key === nodeId || selectedNode?.id === nodeId
-    const hasChildren = isFolder && node.children && Array.isArray(node.children) && node.children.length > 0
+    const hasChildren = isFolder && children.length > 0
     const hasProgress = typeof node.progress === 'number'
     const isDisabled = node.disabled || false
 
@@ -579,9 +536,9 @@ const RepositoryDetailPage: React.FC = () => {
               )}
             </div>
           )}
-          {isExpanded && (
+          {isExpanded && hasChildren && (
             <div className="pb-1">
-              {node.children.map((child: any) => renderTreeNode(child, level + 1))}
+              {children.map((child) => renderTreeNode(child, level + 1))}
             </div>
           )}
         </div>
@@ -634,23 +591,30 @@ const RepositoryDetailPage: React.FC = () => {
 
   // 过滤文件树数据
   const filteredTreeData = useMemo(() => {
-    const filterNodes = (nodes: any[]): any[] => {
-      if (!nodes || !Array.isArray(nodes)) return []
-      if (!searchQuery) return nodes
+    const filterNodes = (nodes: TreeNode[]): TreeNode[] => {
+      if (!searchQuery) {
+        return nodes
+      }
 
-      return nodes.filter(node => {
-        const nodeName = node.title || node.name || ''
-        if (nodeName.toLowerCase().includes(searchQuery.toLowerCase())) {
-          return true
-        }
-        if (node.children && Array.isArray(node.children)) {
-          const filteredChildren = filterNodes(node.children)
-          if (filteredChildren.length > 0) {
-            return true
+      const query = searchQuery.toLowerCase()
+
+      return nodes
+        .map((node) => {
+          const nodeName = (node.title ?? node.name ?? '').toLowerCase()
+          const prompt = node.catalog?.prompt?.toLowerCase() ?? ''
+          const children = node.children ?? []
+          const filteredChildren = filterNodes(children)
+
+          if (nodeName.includes(query) || prompt.includes(query) || filteredChildren.length > 0) {
+            return {
+              ...node,
+              children: filteredChildren
+            }
           }
-        }
-        return false
-      })
+
+          return null
+        })
+        .filter((node): node is TreeNode => node !== null)
     }
 
     return filterNodes
@@ -819,7 +783,7 @@ const RepositoryDetailPage: React.FC = () => {
                         height="100%"
                         theme="light"
                         language="zh-CN"
-                        onSave={(value, html) => {
+                        onSave={() => {
                           handleSave()
                           toast.success('文档保存成功')
                         }}

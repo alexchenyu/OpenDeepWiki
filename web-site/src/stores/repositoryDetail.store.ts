@@ -4,29 +4,20 @@ import { create } from 'zustand'
 import { warehouseService } from '@/services/warehouse.service'
 import type { DocumentNode } from '@/components/repository/DocumentTree'
 import i18n from '@/i18n/index'
+import { getErrorMessage } from '@/lib/errors'
+import type {
+  DocumentCatalogItem,
+  RepositoryInfo
+} from '@/types/repository'
 
 // 监听语言变化事件
-i18n.on('languageChanged', (lng) => {
+i18n.on('languageChanged', () => {
   // 当语言变化时，重新获取文档目录
   const store = useRepositoryDetailStore.getState()
   if (store.owner && store.name) {
     store.fetchDocumentCatalog()
   }
 })
-
-interface RepositoryInfo {
-  id: string
-  organizationName: string
-  name: string
-  description?: string
-  address: string
-  branch: string
-  status: any
-  createdAt: string
-  updatedAt?: string
-  isRecommended?: boolean
-  error?: string
-}
 
 interface RepositoryDetailState {
   // 仓库基本信息
@@ -105,8 +96,7 @@ export const useRepositoryDetailStore = create<RepositoryDetailState>((set, get)
       const response = await warehouseService.getDocumentCatalog(owner, name)
 
       if (response) {
-        // 从DocumentCatalogs接口提取分支列表
-        const branchList = response.branchs || response.branchs || []
+        const branchList = response.branchs || response.branches || []
         if (branchList.length > 0) {
           // 使用返回的分支列表
           const defaultBranch = branchList[0]
@@ -146,14 +136,15 @@ export const useRepositoryDetailStore = create<RepositoryDetailState>((set, get)
         // 尝试获取默认分支的文档目录
         get().fetchDocumentCatalog('main')
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to fetch branches:', error)
+      const message = getErrorMessage(error, 'Failed to fetch branches')
       set({
         branches: ['main', 'master'],
         selectedBranch: 'main',
         defaultBranch: 'main',
         loadingBranches: false,
-        error: error?.message || 'Failed to fetch branches',
+        error: message,
       })
     }
   },
@@ -192,12 +183,13 @@ export const useRepositoryDetailStore = create<RepositoryDetailState>((set, get)
           error: null // 成功时清除错误状态
         })
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to fetch document catalog:', error)
+      const message = getErrorMessage(error, 'Failed to fetch document catalog')
       set({
         documentNodes: [],
         loadingDocuments: false,
-        error: error?.message || 'Failed to fetch document catalog'
+        error: message
       })
     }
   },
@@ -216,12 +208,13 @@ export const useRepositoryDetailStore = create<RepositoryDetailState>((set, get)
         loadingContent: false,
         error: null // 成功时清除错误状态
       })
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to fetch document content:', error)
+      const message = getErrorMessage(error, 'Failed to fetch document content')
       set({
         documentContent: '',
         loadingContent: false,
-        error: error?.message || 'Failed to fetch document content',
+        error: message,
       })
     }
   },
@@ -256,32 +249,37 @@ export const useRepositoryDetailStore = create<RepositoryDetailState>((set, get)
 }))
 
 // 辅助函数：转换文档数据为树形节点
-function convertToTreeNodes(items: any[]): DocumentNode[] {
-  if (!items || !Array.isArray(items)) return []
+function convertToTreeNodes(items: DocumentCatalogItem[]): DocumentNode[] {
+  if (!Array.isArray(items)) return []
 
-  // 递归转换节点
-  const convertNode = (item: any): DocumentNode => {
-    const hasChildren = item.children && item.children.length > 0
-
+  const convertNode = (item: DocumentCatalogItem): DocumentNode => {
+    const children = Array.isArray(item.children) ? item.children : []
+    const isFolder = children.length > 0
     return {
-      id: item.key || item.id || Math.random().toString(),
+      id: item.key || item.id || Math.random().toString(36).slice(2),
       name: item.label || item.name || item.title || 'Untitled',
-      type: hasChildren ? 'folder' : 'file',
+      type: isFolder ? 'folder' : 'file',
       path: item.url || item.path || '',
       description: item.description,
       lastUpdate: item.lastUpdate,
-      children: hasChildren ? item.children.map(convertNode) : []
+      children: isFolder ? children.map(convertNode) : []
     }
   }
 
-  // 转换所有根节点
   return items.map(convertNode)
 }
 
 // 辅助函数：查找第一个文件节点
 function findFirstFileNode(nodes: DocumentNode[]): DocumentNode | null {
-  for (const node of nodes) {
-    return node
+  const queue: DocumentNode[] = [...nodes]
+  while (queue.length > 0) {
+    const node = queue.shift()!
+    if (node.type === 'file') {
+      return node
+    }
+    if (node.children && node.children.length > 0) {
+      queue.push(...node.children)
+    }
   }
   return null
 }

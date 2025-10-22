@@ -1,7 +1,6 @@
 // 批量删除确认对话框
 
 import React, { useState } from 'react'
-import { useTranslation } from 'react-i18next'
 import {
   Dialog,
   DialogContent,
@@ -30,7 +29,6 @@ const BatchDeleteDialog: React.FC<BatchDeleteDialogProps> = ({
   users,
   onSuccess
 }) => {
-  const { t } = useTranslation()
   const [loading, setLoading] = useState(false)
 
   // 提交批量删除
@@ -49,8 +47,23 @@ const BatchDeleteDialog: React.FC<BatchDeleteDialogProps> = ({
 
       onOpenChange(false)
       onSuccess?.()
-    } catch (error: any) {
-      const message = error?.response?.data?.message || error?.message || '删除失败'
+    } catch (error: unknown) {
+      const message = (() => {
+        if (typeof error === 'string') {
+          return error
+        }
+
+        if (error && typeof error === 'object') {
+          const maybeError = error as {
+            response?: { data?: { message?: string } }
+            message?: string
+          }
+
+          return maybeError.response?.data?.message ?? maybeError.message ?? '删除失败'
+        }
+
+        return '删除失败'
+      })()
       toast.error('删除失败', {
         description: message
       })

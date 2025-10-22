@@ -240,7 +240,7 @@ export interface DocumentSettings {
 export interface SettingTestResult {
   success: boolean
   message: string
-  details?: any
+  details?: Record<string, unknown>
 }
 
 // 邮件测试参数
@@ -319,7 +319,7 @@ export interface SettingValidationRule {
   pattern?: RegExp
   min?: number
   max?: number
-  validator?: (value: any) => string | null
+  validator?: (value: unknown) => string | null
 }
 
 // 设置字段配置
@@ -335,7 +335,7 @@ export interface SettingFieldConfig {
   sensitive?: boolean
   requiresRestart?: boolean
   dependsOn?: string[]
-  conditionalDisplay?: (settings: any) => boolean
+  conditionalDisplay?: (settings: Partial<SystemSetting>) => boolean
 }
 
 // 设置分组配置

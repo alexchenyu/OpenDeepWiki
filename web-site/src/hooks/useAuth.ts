@@ -77,12 +77,12 @@ export const useAuth = () => {
         // if (!success) {
         //   handleLogout()
         // }
-      } catch (error) {
+      } catch (error: unknown) {
         console.error('Token refresh failed:', error)
         handleLogout()
       }
     }
-  }, [isAuthenticated, token, refreshToken, handleLogout])
+  }, [handleLogout, isAuthenticated, token])
 
   // 初始化认证状态
   useEffect(() => {
@@ -159,8 +159,9 @@ export const useThirdPartyAuth = () => {
       // 处理登录结果...
       
       // 暂时跳转到首页
+      console.debug('Received OAuth callback parameters (placeholder implementation):', { code, state })
       navigate('/')
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('OAuth callback failed:', error)
       navigate('/login?error=oauth_failed')
     }

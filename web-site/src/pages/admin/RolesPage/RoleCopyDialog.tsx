@@ -21,6 +21,22 @@ import { toast } from 'sonner'
 import { Copy,  Shield } from 'lucide-react'
 import { roleService, type RoleInfo, type CreateRoleDto } from '@/services/admin.service'
 import { request } from '@/utils/request'
+import { getErrorMessage } from '@/lib/errors'
+
+interface RoleCopyFormData {
+  name: string
+  description: string
+  isActive: boolean
+  copyPermissions: boolean
+  copyUsers: boolean
+}
+
+interface RoleWarehousePermission {
+  warehouseId: string
+  isReadOnly: boolean
+  isWrite: boolean
+  isDelete: boolean
+}
 
 interface RoleCopyDialogProps {
   open: boolean
@@ -36,7 +52,7 @@ const RoleCopyDialog: React.FC<RoleCopyDialogProps> = ({
   onSuccess
 }) => {
   const [loading, setLoading] = useState(false)
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<RoleCopyFormData>({
     name: '',
     description: '',
     isActive: true,
@@ -58,7 +74,10 @@ const RoleCopyDialog: React.FC<RoleCopyDialogProps> = ({
   }, [open, sourceRole])
 
   // 表单字段变化处理
-  const handleFieldChange = (field: string, value: string | boolean) => {
+  const handleFieldChange = <K extends keyof RoleCopyFormData>(
+    field: K,
+    value: RoleCopyFormData[K]
+  ) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -119,11 +138,13 @@ const RoleCopyDialog: React.FC<RoleCopyDialogProps> = ({
       if (formData.copyPermissions) {
         try {
           // 获取源角色的权限配置
-          const sourcePermissions = await request.get(`/api/Permission/RoleWarehousePermissions?roleId=${sourceRole.id}`)
+          const sourcePermissions = await request.get<RoleWarehousePermission[]>(
+            `/api/Permission/RoleWarehousePermissions?roleId=${sourceRole.id}`
+          )
 
-          if (sourcePermissions && sourcePermissions.length > 0) {
+          if (Array.isArray(sourcePermissions) && sourcePermissions.length > 0) {
             // 转换权限格式
-            const warehousePermissions = sourcePermissions.map((perm: any) => ({
+            const warehousePermissions = sourcePermissions.map((perm) => ({
               warehouseId: perm.warehouseId,
               isReadOnly: perm.isReadOnly,
               isWrite: perm.isWrite,
@@ -153,8 +174,12 @@ const RoleCopyDialog: React.FC<RoleCopyDialogProps> = ({
             for (const user of roleDetail.users) {
               try {
                 // 获取用户当前角色
-                const currentRoles = await request.get(`/api/Permission/UserRoles?userId=${user.id}`)
-                const currentRoleIds = Array.isArray(currentRoles) ? currentRoles.map((r: any) => r.id) : []
+                const currentRoles = await request.get<RoleInfo[]>(
+                  `/api/Permission/UserRoles?userId=${user.id}`
+                )
+                const currentRoleIds = Array.isArray(currentRoles)
+                  ? currentRoles.map((role) => role.id)
+                  : []
 
                 // 添加新角色
                 const newRoleIds = [...currentRoleIds, newRole.id]
@@ -173,7 +198,7 @@ const RoleCopyDialog: React.FC<RoleCopyDialogProps> = ({
         }
       }
 
-      const successMessage = []
+      const successMessage: string[] = []
       successMessage.push('角色创建成功')
       if (formData.copyPermissions) successMessage.push('权限配置已复制')
       if (formData.copyUsers) successMessage.push('用户分配已复制')
@@ -184,9 +209,10 @@ const RoleCopyDialog: React.FC<RoleCopyDialogProps> = ({
 
       onSuccess?.(newRole)
       onOpenChange(false)
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, '角色复制失败，请稍后重试')
       toast.error('复制失败', {
-        description: error?.message || '角色复制失败，请稍后重试'
+        description: message
       })
     } finally {
       setLoading(false)

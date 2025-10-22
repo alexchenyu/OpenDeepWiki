@@ -157,7 +157,7 @@ export interface UpdateRoleDto {
 
 export interface RoleDetailDto extends RoleInfo {
   users?: UserInfo[]
-  warehousePermissions?: any[]
+  warehousePermissions?: RepositoryPermissionDto[]
 }
 
 // 角色管理API
@@ -368,7 +368,7 @@ export const repositoryService = {
 
   // 获取仓库文档目录
   getDocumentCatalogs: async (repositoryId: string) => {
-    return request.get<DocumentCatalogDto[]>(`/api/Repository/DocumentCatalogs`, {
+    return request.get<TreeNode[]>(`/api/Repository/DocumentCatalogs`, {
       params: { repositoryId }
     })
   },
@@ -538,13 +538,15 @@ export const systemSettingsService = {
   // 获取所有系统设置分组
   getSettingGroups: async (): Promise<SystemSettingGroup[]> => {
     try {
-      const response = await request.get<any>('/api/SystemSetting/groups')
+      const response = await request.get<{ data: Array<{ group?: string; settings?: SystemSetting[] }> }>(
+        '/api/SystemSetting/groups'
+      )
 
-      return response.data.map((group: any) => ({
+      return (response.data ?? []).map((group) => ({
         group: group.group || '',
         settings: Array.isArray(group.settings) ? group.settings : []
       }))
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to load setting groups:', error)
       return []
     }
@@ -555,7 +557,7 @@ export const systemSettingsService = {
     try {
       const response = await request.get<SystemSetting[]>(`/api/SystemSetting/group/${group}`)
       return Array.isArray(response) ? response : []
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(`Failed to load settings for group ${group}:`, error)
       return []
     }
@@ -565,7 +567,7 @@ export const systemSettingsService = {
   getSetting: async (key: string): Promise<SystemSetting | null> => {
     try {
       return await request.get<SystemSetting>(`/api/SystemSetting/${key}`)
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(`Failed to load setting ${key}:`, error)
       return null
     }
@@ -578,7 +580,7 @@ export const systemSettingsService = {
       return await request.put<boolean>(`/api/SystemSetting/${key}`, value || '', {
         headers: { 'Content-Type': 'application/json' }
       })
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(`Failed to update setting ${key}:`, error)
       return false
     }
@@ -588,7 +590,7 @@ export const systemSettingsService = {
   batchUpdateSettings: async (data: BatchUpdateSystemSettings): Promise<boolean> => {
     try {
       return await request.put<boolean>('/api/SystemSetting/batch', data)
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to batch update settings:', error)
       return false
     }
@@ -598,7 +600,7 @@ export const systemSettingsService = {
   createSetting: async (data: SystemSettingInput): Promise<SystemSetting | null> => {
     try {
       return await request.post<SystemSetting>('/api/SystemSetting/', data)
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to create setting:', error)
       return null
     }
@@ -608,7 +610,7 @@ export const systemSettingsService = {
   deleteSetting: async (key: string): Promise<boolean> => {
     try {
       return await request.delete<boolean>(`/api/SystemSetting/${key}`)
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(`Failed to delete setting ${key}:`, error)
       return false
     }
@@ -618,7 +620,7 @@ export const systemSettingsService = {
   resetSetting: async (key: string): Promise<boolean> => {
     try {
       return await request.post<boolean>(`/api/SystemSetting/${key}/reset`)
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(`Failed to reset setting ${key}:`, error)
       return false
     }
@@ -628,7 +630,7 @@ export const systemSettingsService = {
   clearCache: async (): Promise<void> => {
     try {
       await request.post('/api/SystemSetting/cache/clear')
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to clear cache:', error)
     }
   },
@@ -638,7 +640,7 @@ export const systemSettingsService = {
     try {
       const response = await request.get<string[]>('/api/SystemSetting/restart-required')
       return Array.isArray(response) ? response : []
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to load restart required settings:', error)
       return []
     }
@@ -649,7 +651,7 @@ export const systemSettingsService = {
     try {
       const response = await request.get<SystemSetting[]>('/api/SystemSetting/export')
       return Array.isArray(response) ? response : []
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to export settings:', error)
       return []
     }
@@ -660,7 +662,7 @@ export const systemSettingsService = {
     try {
       const response = await request.post<ValidationErrors>('/api/SystemSetting/validate', data)
       return response || {}
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to validate settings:', error)
       return {}
     }
@@ -670,7 +672,7 @@ export const systemSettingsService = {
   testEmailSettings: async (params: EmailTestParams): Promise<SettingTestResult | null> => {
     try {
       return await request.post<SettingTestResult>('/api/SystemSetting/test/email', params)
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to test email settings:', error)
       return null
     }
@@ -680,7 +682,7 @@ export const systemSettingsService = {
   testAISettings: async (params: APITestParams): Promise<SettingTestResult | null> => {
     try {
       return await request.post<SettingTestResult>('/api/SystemSetting/test/ai', params)
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to test AI settings:', error)
       return null
     }
@@ -690,7 +692,7 @@ export const systemSettingsService = {
   testDatabaseConnection: async (): Promise<SettingTestResult | null> => {
     try {
       return await request.post<SettingTestResult>('/api/SystemSetting/test/database')
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to test database connection:', error)
       return null
     }
@@ -711,7 +713,7 @@ export const systemSettingsService = {
       }
       const response = await request.get<PageDto<SettingChangeHistory>>(`/api/SystemSetting/history?${params}`)
       return response || { total: 0, items: [] }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to load change history:', error)
       return { total: 0, items: [] }
     }
@@ -721,7 +723,7 @@ export const systemSettingsService = {
   rollbackSetting: async (historyId: string): Promise<boolean> => {
     try {
       return await request.post<boolean>(`/api/SystemSetting/rollback/${historyId}`)
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(`Failed to rollback setting ${historyId}:`, error)
       return false
     }
@@ -809,7 +811,7 @@ export const statsService = {
         recentActivities: [],
         topRepositories: []
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to load dashboard data:', error)
       return {
         userStats: {
@@ -849,14 +851,18 @@ export const uploadImage = async (file: File): Promise<{ url: string; fileName: 
     const formData = new FormData()
     formData.append('file', file)
 
-    const response = await request.post('/api/FileStorage/image', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    })
+    const response = await request.post<{ data: { url: string; fileName: string; message: string } }>(
+      '/api/FileStorage/image',
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        }
+      }
+    )
 
-    return response.data.data
-  } catch (error) {
+    return response.data
+  } catch (error: unknown) {
     console.error('Upload image failed:', error)
     throw error
   }
@@ -876,14 +882,26 @@ export const uploadImages = async (files: File[]): Promise<{
       formData.append('files', file)
     })
 
-    const response = await request.post('/api/FileStorage/images', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    })
+    const response = await request.post<{
+      data: {
+        images: Array<{ url: string; fileName: string; originalName: string; size: number }>
+        errors: string[]
+        successCount: number
+        errorCount: number
+        message: string
+      }
+    }>(
+      '/api/FileStorage/images',
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        }
+      }
+    )
 
-    return response.data.data
-  } catch (error) {
+    return response.data
+  } catch (error: unknown) {
     console.error('Upload images failed:', error)
     throw error
   }
@@ -895,7 +913,7 @@ export const deleteImage = async (imageUrl: string): Promise<void> => {
     await request.delete('/api/FileStorage/image', {
       params: { imageUrl },
     })
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Delete image failed:', error)
     throw error
   }

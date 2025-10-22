@@ -133,15 +133,15 @@ class UserService {
   /**
    * 获取用户设置
    */
-  async getUserSettings(): Promise<ApiResponse<Record<string, any>>> {
-    const response = await fetchService.get<ApiResponse<Record<string, any>>>(`${this.basePath}/settings`)
+  async getUserSettings(): Promise<ApiResponse<Record<string, unknown>>> {
+    const response = await fetchService.get<ApiResponse<Record<string, unknown>>>(`${this.basePath}/settings`)
     return response
   }
 
   /**
    * 更新用户设置
    */
-  async updateUserSettings(settings: Record<string, any>): Promise<ApiResponse<boolean>> {
+  async updateUserSettings(settings: Record<string, unknown>): Promise<ApiResponse<boolean>> {
     const response = await fetchService.put<ApiResponse<boolean>>(`${this.basePath}/settings`, settings)
     return response
   }

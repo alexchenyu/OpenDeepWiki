@@ -8,14 +8,29 @@ import LanguageDetector from 'i18next-browser-languagedetector'
 import enUS from './locales/en-US.json'
 import zhCN from './locales/zh-CN.json'
 
-const resources = {
+const baseResources = {
   'en-US': {
     translation: enUS,
   },
   'zh-CN': {
     translation: zhCN,
   },
+} satisfies Record<string, { translation: typeof enUS }>
+
+const languageAliases: Record<string, keyof typeof baseResources> = {
+  en: 'en-US',
+  'en-US': 'en-US',
+  zh: 'zh-CN',
+  'zh-CN': 'zh-CN',
 }
+
+const resources = Object.entries(languageAliases).reduce<Record<string, { translation: typeof enUS }>>(
+  (acc, [alias, target]) => {
+    acc[alias] = baseResources[target]
+    return acc
+  },
+  {}
+)
 
 i18n
   // 检测用户语言
@@ -39,7 +54,8 @@ i18n
     },
 
     // 支持的语言
-    supportedLngs: ['en-US', 'zh-CN'],
+    supportedLngs: Object.keys(languageAliases),
+    nonExplicitSupportedLngs: true,
 
     // 命名空间
     ns: ['translation'],
@@ -54,7 +70,13 @@ if (typeof window !== 'undefined') {
 export default i18n
 
 // 导出语言列表
-export const languages = [
+export interface LanguageOption {
+  code: string
+  name: string
+  flag: string
+}
+
+export const languages: LanguageOption[] = [
   {
     code: 'zh-CN',
     name: '中文(简体)',

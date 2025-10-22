@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Globe, Check } from 'lucide-react'
-import { languages, changeLanguage } from '@/i18n/index'
+import { languages, changeLanguage, type LanguageOption } from '@/i18n/index'
 import { cn } from '@/lib/utils'
 
 interface LanguageSwitcherProps {
@@ -25,7 +25,7 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({
 }) => {
   const { i18n } = useTranslation()
   
-  const currentLanguage = languages.find((lang:any) => lang.code === i18n.language) || languages[0]
+  const currentLanguage = languages.find((lang: LanguageOption) => lang.code === i18n.language) || languages[0]
 
   const handleLanguageChange = async (languageCode: string) => {
     try {

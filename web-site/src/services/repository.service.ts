@@ -7,7 +7,8 @@ import type {
   RepositoryListParams,
   CreateGitRepositoryDto,
   UpdateRepositoryDto,
-  ApiResponse
+  ApiResponse,
+  RepositoryFileNode
 } from '@/types/repository'
 
 class RepositoryService {
@@ -50,8 +51,8 @@ class RepositoryService {
   /**
    * 获取仓库文件目录结构
    */
-  async getFiles(id: string): Promise<any[]> {
-    return fetchService.get<any[]>(
+  async getFiles(id: string): Promise<RepositoryFileNode[]> {
+    return fetchService.get<RepositoryFileNode[]>(
       `${this.basePath}/Files`,
       { params: { id } }
     )

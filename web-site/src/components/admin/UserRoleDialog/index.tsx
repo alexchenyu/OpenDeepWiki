@@ -1,6 +1,6 @@
 // 用户角色分配对话框
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Dialog,
@@ -39,7 +39,7 @@ const UserRoleDialog: React.FC<UserRoleDialogProps> = ({
   const [currentUserRoleIds, setCurrentUserRoleIds] = useState<string[]>([])
 
   // 加载角色列表
-  const loadRoles = async () => {
+  const loadRoles = useCallback(async () => {
     try {
       setLoading(true)
       const response = await roleService.getAllRoles()
@@ -54,10 +54,10 @@ const UserRoleDialog: React.FC<UserRoleDialogProps> = ({
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   // 加载用户当前角色
-  const loadUserRoles = async () => {
+  const loadUserRoles = useCallback(async () => {
     if (!user?.id) return
 
     try {
@@ -71,14 +71,14 @@ const UserRoleDialog: React.FC<UserRoleDialogProps> = ({
         description: '无法加载用户角色'
       })
     }
-  }
+  }, [user?.id])
 
   useEffect(() => {
     if (open && user) {
       loadRoles()
       loadUserRoles()
     }
-  }, [open, user])
+  }, [open, user, loadRoles, loadUserRoles])
 
   // 处理角色选择
   const handleRoleToggle = (roleId: string, checked: boolean) => {
@@ -106,8 +106,17 @@ const UserRoleDialog: React.FC<UserRoleDialogProps> = ({
 
       onOpenChange(false)
       onSuccess?.()
-    } catch (error: any) {
-      const message = error?.response?.data?.message || error?.message || '分配失败'
+    } catch (error: unknown) {
+      const message = (() => {
+        if (typeof error === 'string') {
+          return error
+        }
+        if (error && typeof error === 'object') {
+          const maybeError = error as { response?: { data?: { message?: string } }; message?: string }
+          return maybeError.response?.data?.message ?? maybeError.message ?? '分配失败'
+        }
+        return '分配失败'
+      })()
       toast.error('分配失败', {
         description: message
       })

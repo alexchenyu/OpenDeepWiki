@@ -37,7 +37,7 @@ export const usePermissions = () => {
   const hasPermission = (permission: Permission): boolean => {
     if (!isAuthenticated || !user) return false
 
-    const { action, resource } = permission
+    const { action } = permission
 
     // 管理员拥有所有权限
     if (isAdmin()) return true

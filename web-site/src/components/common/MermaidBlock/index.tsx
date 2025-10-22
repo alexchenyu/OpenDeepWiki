@@ -2,97 +2,10 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import mermaid from 'mermaid'
 import * as Dialog from '@radix-ui/react-dialog'
 import { X, Expand, ZoomIn, ZoomOut, RotateCcw, Download } from 'lucide-react'
-
-// SVG 缓存管理器
-class MermaidCache {
-  private cache = new Map<string, { svg: string; timestamp: number }>()
-  private readonly maxSize = 50 // 最大缓存数量
-  private readonly maxAge = 30 * 60 * 1000 // 30分钟过期
-
-  // 生成内容哈希
-  private generateHash(content: string): string {
-    let hash = 0
-    for (let i = 0; i < content.length; i++) {
-      const char = content.charCodeAt(i)
-      hash = ((hash << 5) - hash) + char
-      hash = hash & hash // 转换为32位整数
-    }
-    return Math.abs(hash).toString(36)
-  }
-
-  // 获取缓存
-  get(chart: string): string | null {
-    const key = this.generateHash(chart.trim())
-    const cached = this.cache.get(key)
-
-    if (!cached) return null
-
-    // 检查是否过期
-    if (Date.now() - cached.timestamp > this.maxAge) {
-      this.cache.delete(key)
-      return null
-    }
-
-    // LRU: 重新设置以更新访问顺序
-    this.cache.delete(key)
-    this.cache.set(key, {
-      ...cached,
-      timestamp: Date.now() // 更新访问时间
-    })
-
-    return cached.svg
-  }
-
-  // 设置缓存
-  set(chart: string, svg: string): void {
-    const key = this.generateHash(chart.trim())
-
-    // 如果缓存已满，删除最旧的项
-    if (this.cache.size >= this.maxSize) {
-      const oldestKey = this.cache.keys().next().value
-      this.cache.delete(oldestKey)
-    }
-
-    this.cache.set(key, {
-      svg,
-      timestamp: Date.now()
-    })
-  }
-
-  // 清理过期缓存
-  cleanup(): void {
-    const now = Date.now()
-    for (const [key, value] of this.cache.entries()) {
-      if (now - value.timestamp > this.maxAge) {
-        this.cache.delete(key)
-      }
-    }
-  }
-
-  // 清空所有缓存
-  clear(): void {
-    this.cache.clear()
-  }
-
-  // 获取缓存信息
-  getStats(): { size: number; maxSize: number } {
-    return {
-      size: this.cache.size,
-      maxSize: this.maxSize
-    }
-  }
-}
-
-// 全局缓存实例
-const mermaidCache = new MermaidCache()
-
-// 定期清理过期缓存
-setInterval(() => {
-  mermaidCache.cleanup()
-}, 5 * 60 * 1000) // 每5分钟清理一次
-
-// 导出缓存实例以便外部使用
-export { mermaidCache }
+import { fixMermaidCode, preCleanMermaidCode } from '@/lib/mermaidParserFixer.v2'
+import { safeRenderMermaid } from '@/lib/mermaidSafetyWrapper'
+import { mermaidErrorReporter } from '@/lib/mermaidErrorReporter'
+import { mermaidCache } from './mermaidCache'
 
 interface MermaidBlockProps {
   chart: string
@@ -118,6 +31,8 @@ if (!document.querySelector('#mermaid-shimmer-animation')) {
 export default function MermaidBlock({ chart }: MermaidBlockProps) {
   const ref = useRef<HTMLDivElement>(null)
   const modalRef = useRef<HTMLDivElement>(null)
+  const fixedChartRef = useRef<string>('')
+  const fixAttemptsRef = useRef<Array<{ error: string; fix: string }>>([])
   const [isError, setIsError] = useState(false)
   const [isOpen, setIsOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -127,6 +42,8 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const [estimatedHeight, setEstimatedHeight] = useState(200)
   const [isExporting, setIsExporting] = useState(false)
+  const [useFallbackRender, setUseFallbackRender] = useState(false)
+  const [wasAggressivelyFixed, setWasAggressivelyFixed] = useState(false)
 
   // 根据图表内容估算高度
   const estimateChartHeight = useCallback((chart: string): number => {
@@ -175,44 +92,6 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
     setEstimatedHeight(newHeight)
   }, [chart, estimateChartHeight])
 
-  // Client-side Mermaid syntax repair as last resort
-  const attemptClientSideRepair = useCallback((code: string): string => {
-    let fixed = code.trim()
-
-    // Fix 1: Remove variable syntax like ${var}
-    fixed = fixed.replace(/\$\{[^}]*\}/g, 'Variable')
-
-    // Fix 2: Fix style syntax - ensure commas between properties
-    fixed = fixed.replace(/style\s+(\S+)\s+fill\s*:\s*([^\s,;]+)\s+(\w+)/g, 'style $1 fill:$2,$3')
-
-    // Fix 3: Fix incomplete arrows ending with short words like "Err"
-    fixed = fixed.replace(/-->\s*Err\b/g, '--> Error')
-
-    // Fix 4: Ensure subgraph declarations are on separate lines
-    fixed = fixed.replace(/subgraph\s+(\S+)\s+([A-Za-z0-9_]+\[)/g, 'subgraph $1\n    $2')
-
-    // Fix 5: Ensure "end" is on its own line
-    fixed = fixed.replace(/end\s+([A-Za-z0-9_]+\[)/g, 'end\n    $1')
-
-    // Fix 6: Fix note syntax in state diagrams
-    fixed = fixed.replace(/note\s+(right|left)\s+o[^:]*:\s*(.+)/g, (_, dir, text) => {
-      const cleanText = text.replace(/"/g, '').trim()
-      return `note ${dir}: "${cleanText}"`
-    })
-
-    // Fix 7: Remove malformed style lines that can't be fixed
-    const lines = fixed.split('\n')
-    const cleanedLines = lines.filter(line => {
-      const trimmed = line.trim()
-      // Remove lines like "Hardware fill:#bfb 1"
-      if (/^(fill|stroke|Hardware)\s+fill\s*:/.test(trimmed)) {
-        return false
-      }
-      return true
-    })
-
-    return cleanedLines.join('\n')
-  }, [])
 
   const configureMermaid = () => {
     mermaid.initialize({
@@ -527,7 +406,7 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
     } finally {
       setIsExporting(false)
     }
-  }, [isExporting])
+  }, [chart, exportToSVG, isExporting])
 
   // SVG导出的替代方法
   const exportToSVG = useCallback(async () => {
@@ -612,8 +491,8 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
           throw new Error('Empty chart content')
         }
 
-        // Apply client-side repair before rendering
-        cleanChart = attemptClientSideRepair(cleanChart)
+        // 预清理
+        cleanChart = preCleanMermaidCode(cleanChart)
 
         // 首先检查缓存
         const cachedSvg = mermaidCache.get(cleanChart)
@@ -649,21 +528,72 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
           return
         }
 
-        // 缓存未命中，进行渲染
+        // 缓存未命中，配置mermaid
         console.log('Rendering new chart:', chartHash)
         configureMermaid()
+
+        // 使用v2系统性修复器（自动5阶段渐进式修复）
+        const fixResult = await fixMermaidCode(
+          cleanChart,
+          async (code: string) => {
+            try {
+              return await Promise.race([
+                mermaid.parse(code),
+                new Promise<boolean>((_, reject) =>
+                  setTimeout(() => reject(new Error('Parse timeout')), 3000)
+                )
+              ])
+            } catch (error) {
+              throw error
+            }
+          },
+          15 // 总共最多15次尝试（阶段1: 3次，阶段2: 10次，阶段3-5: 各1次）
+        )
+
+        console.log('Fix result:', fixResult)
+        fixedChartRef.current = fixResult.code
+        fixAttemptsRef.current = fixResult.attempts
+
+        // 检测是否使用了激进策略
+        const aggressiveFixes = fixResult.attempts.filter(attempt =>
+          attempt.fix.includes('Binary fix') ||
+          attempt.fix.includes('Deleted line') ||
+          attempt.fix.includes('Simplified to minimal') ||
+          attempt.fix.includes('Extracted and rebuilt')
+        )
+        setWasAggressivelyFixed(aggressiveFixes.length > 0)
+
+        // 如果修复失败，检查是否应该使用降级渲染
+        if (!fixResult.fixed && fixResult.attempts.length > 0) {
+          // 尝试了修复但仍然失败，启用降级渲染
+          console.warn('Failed to fix mermaid syntax after all 5 stages, using fallback render')
+          setUseFallbackRender(true)
+          setIsError(true)
+          setIsLoading(false)
+          return
+        }
 
         // Generate unique ID for this chart
         const id = `mermaid-${chartHash}-${Date.now()}`
 
-        // Validate mermaid syntax first
-        const isValid = await mermaid.parse(cleanChart)
-        if (!isValid) {
-          throw new Error('Invalid mermaid syntax')
+        // 使用安全包装器渲染，带超时和错误隔离
+        const renderResult = await safeRenderMermaid(
+          chartHash,
+          async () => await mermaid.render(id, fixResult.code),
+          {
+            timeout: 10000, // 10秒超时
+            onError: (error) => {
+              console.error('Safe render caught error:', error.message)
+            },
+            fallback: () => ({ svg: '' })
+          }
+        )
+
+        if (!renderResult.success || !renderResult.result) {
+          throw new Error(renderResult.error?.message || 'Render failed')
         }
 
-        // Render mermaid chart
-        const { svg } = await mermaid.render(id, cleanChart)
+        const { svg } = renderResult.result
 
         if (ref.current && svg) {
           ref.current.innerHTML = svg
@@ -688,13 +618,39 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
           }
 
           // 缓存渲染结果
-          mermaidCache.set(cleanChart, svg)
+          mermaidCache.set(fixResult.code, svg)
           console.log('Cached SVG for chart:', chartHash, 'Cache stats:', mermaidCache.getStats())
         }
 
         setIsLoading(false)
       } catch (error) {
         console.error('Mermaid rendering error:', error)
+
+        // 记录详细的错误信息
+        const errorMessage = error instanceof Error ? error.message : String(error)
+
+        if (error instanceof Error) {
+          console.error('Error details:', {
+            message: error.message,
+            stack: error.stack,
+            originalChart: chart.substring(0, 200),
+            fixedChart: fixedChartRef.current.substring(0, 200),
+            attempts: fixAttemptsRef.current
+          })
+        }
+
+        // 报告错误到监控系统
+        mermaidErrorReporter.report({
+          chartHash,
+          errorType: error instanceof Error ? error.name : 'UnknownError',
+          errorMessage,
+          originalCode: chart,
+          fixedCode: fixedChartRef.current,
+          fixAttempts: fixAttemptsRef.current,
+          stage: 'render',
+          wasFixed: false
+        })
+
         setIsError(true)
         setIsLoading(false)
 
@@ -707,9 +663,9 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
 
     const timeoutId = setTimeout(renderMermaid, 100)
     return () => clearTimeout(timeoutId)
-  }, [chart, chartHash, attemptClientSideRepair])
+  }, [chart, chartHash, estimatedHeight])
 
-  // Render modal content when modal opens
+  // Render modal content when modal opens (reuse fixed code from main render)
   useEffect(() => {
     const renderModalMermaid = async () => {
       if (!modalRef.current || !isOpen) return
@@ -718,17 +674,11 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
         // Clear previous content
         modalRef.current.innerHTML = ''
 
-        // Clean and validate chart content
-        let cleanChart = chart.trim()
-        if (!cleanChart) {
-          throw new Error('Empty chart content')
-        }
-
-        // Apply client-side repair before rendering
-        cleanChart = attemptClientSideRepair(cleanChart)
+        // Use the fixed chart from main render
+        const codeToRender = fixedChartRef.current || preCleanMermaidCode(chart.trim())
 
         // 首先检查缓存
-        const cachedSvg = mermaidCache.get(cleanChart)
+        const cachedSvg = mermaidCache.get(codeToRender)
         if (cachedSvg) {
           console.log('Using cached SVG for modal chart:', chartHash)
 
@@ -752,14 +702,8 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
         // Generate unique ID for modal chart
         const id = `mermaid-modal-${chartHash}-${Date.now()}`
 
-        // Validate mermaid syntax first
-        const isValid = await mermaid.parse(cleanChart)
-        if (!isValid) {
-          throw new Error('Invalid mermaid syntax')
-        }
-
         // Render mermaid chart for modal
-        const { svg } = await mermaid.render(id, cleanChart)
+        const { svg } = await mermaid.render(id, codeToRender)
 
         if (modalRef.current && svg) {
           modalRef.current.innerHTML = svg
@@ -772,8 +716,8 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
           }
 
           // 缓存渲染结果（如果还没有的话）
-          if (!mermaidCache.get(cleanChart)) {
-            mermaidCache.set(cleanChart, svg)
+          if (!mermaidCache.get(codeToRender)) {
+            mermaidCache.set(codeToRender, svg)
             console.log('Cached SVG for modal chart:', chartHash)
           }
         }
@@ -790,7 +734,7 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
       const timeoutId = setTimeout(renderModalMermaid, 100)
       return () => clearTimeout(timeoutId)
     }
-  }, [isOpen, chart, chartHash, attemptClientSideRepair])
+  }, [isOpen, chart, chartHash])
 
   // 组件卸载时的清理（开发环境下的调试信息）
   useEffect(() => {
@@ -817,6 +761,50 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
   }, [isOpen, handleExport])
 
   if (isError) {
+    // 降级渲染：显示为代码块
+    if (useFallbackRender) {
+      return (
+        <div className="my-6 rounded-lg border border-border bg-card p-4">
+          <div className="flex items-start gap-3 mb-3">
+            <div className="flex-shrink-0 mt-0.5">
+              <svg className="h-5 w-5 text-yellow-600 dark:text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium mb-1">Mermaid 图表（降级显示）</div>
+              <div className="text-xs text-muted-foreground">
+                图表包含复杂语法错误，无法渲染。以下是原始代码：
+              </div>
+            </div>
+          </div>
+
+          <div className="relative">
+            <pre className="overflow-x-auto text-sm bg-muted/30 p-4 rounded border border-border font-mono leading-relaxed">
+              <code className="language-mermaid">{fixedChartRef.current || chart}</code>
+            </pre>
+          </div>
+
+          {fixAttemptsRef.current.length > 0 && (
+            <details className="text-xs mt-3">
+              <summary className="cursor-pointer text-muted-foreground hover:text-foreground mb-2">
+                查看修复尝试详情 ({fixAttemptsRef.current.length} 次)
+              </summary>
+              <div className="space-y-2 mt-2">
+                {fixAttemptsRef.current.map((attempt, index) => (
+                  <div key={index} className="bg-muted/50 p-2 rounded border border-border">
+                    <div className="text-destructive font-medium mb-1">尝试 {index + 1}: {attempt.error}</div>
+                    <div className="text-muted-foreground">修复: {attempt.fix}</div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+      )
+    }
+
+    // 正常错误显示
     return (
       <div className="my-6 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
         <div className="flex items-start gap-3">
@@ -828,21 +816,49 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
           <div className="flex-1 min-w-0">
             <div className="text-sm font-medium text-destructive mb-2">图表渲染失败</div>
             <div className="text-xs text-muted-foreground mb-3">
-              Mermaid图表包含语法错误。常见问题：
-              <ul className="list-disc list-inside mt-1 space-y-0.5">
-                <li>节点ID包含空格或特殊字符（应使用字母、数字、下划线）</li>
-                <li>subgraph声明格式不正确（应单独一行）</li>
-                <li>样式语法缺少分隔符（应使用逗号）</li>
-                <li>箭头连接不完整</li>
-              </ul>
+              Mermaid图表包含语法错误，自动修复失败。
             </div>
+
+            {fixAttemptsRef.current.length > 0 && (
+              <details className="text-xs mb-3">
+                <summary className="cursor-pointer text-muted-foreground hover:text-foreground mb-2">
+                  查看修复尝试 ({fixAttemptsRef.current.length} 次)
+                </summary>
+                <div className="space-y-2 mt-2">
+                  {fixAttemptsRef.current.map((attempt, index) => (
+                    <div key={index} className="bg-muted/50 p-2 rounded border border-border">
+                      <div className="text-destructive font-medium mb-1">尝试 {index + 1}: {attempt.error}</div>
+                      <div className="text-muted-foreground">修复: {attempt.fix}</div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+
             <details className="text-xs">
               <summary className="cursor-pointer text-muted-foreground hover:text-foreground mb-2">
-                显示原始代码
+                {fixedChartRef.current && fixedChartRef.current !== chart ? '显示修复后的代码' : '显示原始代码'}
               </summary>
-              <pre className="overflow-x-auto text-xs bg-muted/50 p-3 rounded border border-border mt-2">
-                <code className="language-mermaid">{chart}</code>
-              </pre>
+              {fixedChartRef.current && fixedChartRef.current !== chart ? (
+                <div>
+                  <div className="text-muted-foreground mb-1">修复后的代码（仍有错误）：</div>
+                  <pre className="overflow-x-auto text-xs bg-muted/50 p-3 rounded border border-border">
+                    <code className="language-mermaid">{fixedChartRef.current}</code>
+                  </pre>
+                  <details className="mt-3">
+                    <summary className="cursor-pointer text-muted-foreground hover:text-foreground mb-2">
+                      显示原始代码
+                    </summary>
+                    <pre className="overflow-x-auto text-xs bg-muted/50 p-3 rounded border border-border mt-2">
+                      <code className="language-mermaid">{chart}</code>
+                    </pre>
+                  </details>
+                </div>
+              ) : (
+                <pre className="overflow-x-auto text-xs bg-muted/50 p-3 rounded border border-border mt-2">
+                  <code className="language-mermaid">{chart}</code>
+                </pre>
+              )}
             </details>
           </div>
         </div>
@@ -852,7 +868,21 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
 
   return (
     <>
-      <div className="my-8 flex justify-center">
+      <div className="my-8 flex flex-col items-center">
+        {/* 激进修复警告 */}
+        {wasAggressivelyFixed && (
+          <div className="mb-3 w-full max-w-4xl rounded-lg border border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20 px-4 py-2 text-sm">
+            <div className="flex items-center gap-2">
+              <svg className="h-4 w-4 text-yellow-600 dark:text-yellow-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <span className="text-yellow-800 dark:text-yellow-200">
+                此图表包含复杂语法错误，已自动简化以确保显示。某些细节可能丢失。
+              </span>
+            </div>
+          </div>
+        )}
+
         <div className="group relative inline-block max-w-full min-w-[300px] overflow-x-auto rounded-xl border border-border/50 bg-gradient-to-br from-card to-card/80 p-6 shadow-lg backdrop-blur-sm">
           <div className="absolute right-3 top-3 z-10 flex gap-2 opacity-0 transition-all duration-200 group-hover:opacity-100">
             <button

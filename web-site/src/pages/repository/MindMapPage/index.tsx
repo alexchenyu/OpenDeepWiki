@@ -1,8 +1,8 @@
 
-import { useEffect, useState, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Loader2, AlertCircle, RefreshCw, Maximize, Minimize, Download } from 'lucide-react'
+import { AlertCircle, RefreshCw, Maximize, Minimize, Download } from 'lucide-react'
 import { useRepositoryDetailStore } from '@/stores/repositoryDetail.store'
 import { fetchService } from '@/services/fetch'
 import { Button } from '@/components/ui/button'
@@ -32,6 +32,27 @@ interface MindElixirNode {
   expanded?: boolean
   hyperLink?: string
   children?: MindElixirNode[]
+}
+
+interface MindElixirHandle {
+  container?: HTMLElement
+  scaleFit: () => void
+  toCenter: () => void
+  move: (dx: number, dy: number) => void
+  refresh: () => void
+  exportPng: () => Promise<Blob>
+  init: (data: { nodeData: MindElixirNode; linkData: Record<string, unknown> }) => void
+  destroy?: () => void
+  bus: {
+    addListener: (event: string, handler: (payload: unknown) => void) => void
+  }
+}
+
+interface MindElixirConstructor {
+  new (options: Record<string, unknown>): MindElixirHandle & {
+    container?: HTMLElement
+  }
+  SIDE: number
 }
 
 class MindMapService {
@@ -107,7 +128,7 @@ export default function MindMapPage({ className }: { className?: string }) {
   const [error, setError] = useState<string>('')
   const [isFullscreen, setIsFullscreen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
-  const mindRef = useRef<any>(null)
+  const mindRef = useRef<MindElixirHandle | null>(null)
   const panCleanupRef = useRef<(() => void) | null>(null)
 
   const branch = searchParams.get('branch') || selectedBranch || 'main'
@@ -115,7 +136,7 @@ export default function MindMapPage({ className }: { className?: string }) {
   // 检测是否为暗色主题
   const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
 
-  const fetchMindMap = async () => {
+  const fetchMindMap = useCallback(async () => {
     if (!owner || !name) return
 
     setLoading(true)
@@ -134,21 +155,26 @@ export default function MindMapPage({ className }: { className?: string }) {
       } else {
         setError(response.message || t('repository.mindMap.loadFailed'))
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to fetch mind map:', err)
-      setError(err?.message || t('repository.mindMap.loadFailed'))
+      const message =
+        err && typeof err === 'object' && 'message' in err && typeof (err as { message?: string }).message === 'string'
+          ? (err as { message?: string }).message
+          : t('repository.mindMap.loadFailed')
+      setError(message)
     } finally {
       setLoading(false)
     }
-  }
+  }, [branch, i18n.language, initMindElixir, name, owner, t])
 
 
   // 初始化 Mind Elixir
-  const initMindElixir = async (mindData: MindElixirNode) => {
+  const initMindElixir = useCallback(async (mindData: MindElixirNode) => {
     if (!containerRef.current) return
 
     // 动态导入 mind-elixir
-    const MindElixir = (await import('mind-elixir')).default
+    const MindElixirModule = await import('mind-elixir')
+    const MindElixir = MindElixirModule.default as MindElixirConstructor
 
     // 销毁旧实例
     if (panCleanupRef.current) {
@@ -206,7 +232,7 @@ export default function MindMapPage({ className }: { className?: string }) {
       },
     }
 
-    const mind = new MindElixir(options)
+    const mind = new MindElixir(options) as MindElixirHandle
 
     const mindElixirData = {
       nodeData: mindData,
@@ -300,13 +326,14 @@ export default function MindMapPage({ className }: { className?: string }) {
       mind.container.classList.remove('grabbing')
     }
 
-    mind.bus.addListener('selectNode', (node: any) => {
-      if (node.hyperLink) {
-        window.open(node.hyperLink, '_blank')
+    mind.bus.addListener('selectNode', (node: unknown) => {
+      const payload = node as { hyperLink?: string }
+      if (payload.hyperLink) {
+        window.open(payload.hyperLink, '_blank')
       }
     })
 
-    mind.bus.addListener('operation', (operation: any) => {
+    mind.bus.addListener('operation', (operation: unknown) => {
       console.log('Mind map operation:', operation)
     })
 
@@ -330,7 +357,7 @@ export default function MindMapPage({ className }: { className?: string }) {
         mind.destroy?.()
       }
     }
-  }
+  }, [isDark])
 
   // 全屏切换
   const toggleFullscreen = () => {
@@ -368,7 +395,7 @@ export default function MindMapPage({ className }: { className?: string }) {
 
   useEffect(() => {
     fetchMindMap()
-  }, [owner, name, branch, i18n.language])
+  }, [fetchMindMap])
 
   // 主题变化时重新初始化mindmap
   useEffect(() => {
@@ -376,7 +403,7 @@ export default function MindMapPage({ className }: { className?: string }) {
       const mindData = convertToMindElixirData(mindMapData)
       setTimeout(() => initMindElixir(mindData), 100)
     }
-  }, [isDark])
+  }, [initMindElixir, isDark, mindMapData])
 
   useEffect(() => {
     return () => {
@@ -419,7 +446,7 @@ export default function MindMapPage({ className }: { className?: string }) {
 
   return (
     <TooltipProvider>
-      <div className="h-full">
+      <div className={cn('h-full', className)}>
         <Card className={`
           relative flex flex-col
           ${isFullscreen ? 'h-screen fixed top-0 left-0 w-screen z-[9999]' : 'h-[85vh]'}

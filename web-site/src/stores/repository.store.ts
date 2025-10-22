@@ -2,6 +2,7 @@
 
 import { create } from 'zustand'
 import { warehouseService } from '@/services/warehouse.service'
+import { getErrorMessage } from '@/lib/errors'
 import type { RepositoryInfo,  RepositoryListParams } from '@/types/repository'
 
 interface RepositoryState {
@@ -24,7 +25,7 @@ interface RepositoryState {
   resetState: () => void
 }
 
-const initialState = {
+const initialState: Omit<RepositoryState, 'fetchRepositories' | 'setSelectedRepository' | 'setKeyword' | 'setCurrentPage' | 'setPageSize' | 'resetState'> = {
   repositories: [],
   totalCount: 0,
   currentPage: 1,
@@ -60,10 +61,11 @@ export const useRepositoryStore = create<RepositoryState>((set, get) => ({
         keyword: params?.keyword ?? keyword,
         loading: false,
       })
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, '获取仓库列表失败')
       set({
         loading: false,
-        error: error?.message || '获取仓库列表失败',
+        error: message,
       })
     }
   },

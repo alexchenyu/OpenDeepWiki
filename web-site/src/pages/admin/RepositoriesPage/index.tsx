@@ -91,31 +91,28 @@ const RepositoriesPage: React.FC = () => {
   const [editingRepository, setEditingRepository] = useState<WarehouseInfo | null>(null)
   const [showDeleteAlert, setShowDeleteAlert] = useState(false)
   const [repositoryToDelete, setRepositoryToDelete] = useState<WarehouseInfo | null>(null)
-  const [batchLoading, setBatchLoading] = useState(false)
 
   // 加载仓库数据
   const loadRepositories = useCallback(async () => {
     try {
       setLoading(true)
-      const { data } = await repositoryService.getRepositoryList(
+      const { items, total: totalCount } = await repositoryService.getRepositoryList(
         currentPage,
         pageSize,
         searchQuery || undefined,
         statusFilter === 'all' ? undefined : statusFilter
-      ) as any
-      // 调试日志
-      console.log('API Response:', data)
-      console.log('Response items:', data.items)
-      console.log('Response total:', data.total)
-      // 处理API响应数据结构
-      setRepositories(data.items || [])
-      setTotal(data.total || 0)
-      // 清空选中状态
+      )
+      setRepositories(items ?? [])
+      setTotal(totalCount ?? 0)
       setSelectedRepositories([])
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to load repositories:', error)
+      const description =
+        error && typeof error === 'object' && 'message' in error && typeof (error as { message?: string }).message === 'string'
+          ? (error as { message?: string }).message
+          : '无法加载仓库列表'
       toast.error('加载失败', {
-        description: '无法加载仓库列表'
+        description
       })
     } finally {
       setLoading(false)
@@ -136,7 +133,7 @@ const RepositoriesPage: React.FC = () => {
       }
     }, 500)
     return () => clearTimeout(timer)
-  }, [searchQuery])
+  }, [currentPage, loadRepositories, searchQuery])
 
   // 状态筛选立即生效
   useEffect(() => {
@@ -145,7 +142,7 @@ const RepositoriesPage: React.FC = () => {
     } else {
       setCurrentPage(1)
     }
-  }, [statusFilter])
+  }, [currentPage, loadRepositories, statusFilter])
 
   const getStatusBadge = (status?: string) => {
     const statusConfig = {
@@ -223,7 +220,8 @@ const RepositoriesPage: React.FC = () => {
         description: `仓库 "${repositoryToDelete.name}" 已被删除`
       })
       loadRepositories()
-    } catch (error) {
+    } catch (error: unknown) {
+      console.error('Failed to delete repository:', error)
       toast.error('删除失败', {
         description: '无法删除仓库'
       })
@@ -241,7 +239,8 @@ const RepositoriesPage: React.FC = () => {
         description: `仓库 "${name}" 已开始重新处理`
       })
       loadRepositories()
-    } catch (error) {
+    } catch (error: unknown) {
+      console.error('Failed to refresh repository:', error)
       toast.error('刷新失败', {
         description: '无法刷新仓库'
       })
@@ -286,8 +285,7 @@ const RepositoriesPage: React.FC = () => {
           {selectedRepositories.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" disabled={batchLoading}>
-                  {batchLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <Button variant="outline">
                   批量操作 ({selectedRepositories.length})
                 </Button>
               </DropdownMenuTrigger>
@@ -647,9 +645,14 @@ const EditRepositoryDialog: React.FC<{
       await repositoryService.updateRepository(repository.id, formData)
       toast.success('仓库信息更新成功')
       onSuccess()
-    } catch (error: any) {
+    } catch (error: unknown) {
+      console.error('Update repository failed:', error)
+      const description =
+        error && typeof error === 'object' && 'message' in error && typeof (error as { message?: string }).message === 'string'
+          ? (error as { message?: string }).message
+          : '更新仓库信息时发生错误'
       toast.error('更新失败', {
-        description: error.message || '更新仓库信息时发生错误'
+        description
       })
     } finally {
       setLoading(false)

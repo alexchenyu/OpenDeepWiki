@@ -11,6 +11,8 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useRepositories } from '@/hooks/useRepositories'
 import { warehouseService } from '@/services/warehouse.service'
+import type { ApiResponse, RepositoryInfo } from '@/types/repository'
+import { getErrorMessage } from '@/lib/errors'
 import { Loader2, RefreshCw, AlertCircle, Plus } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -33,13 +35,13 @@ export const HomePage = () => {
   const [searchValue, setSearchValue] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
 
-  const handleRepositoryClick = (repo: any) => {
+  const handleRepositoryClick = (repo: RepositoryInfo) => {
     navigate(`/${repo.organizationName}/${repo.name}`)
   }
 
   const handleAddRepository = async (values: RepositoryFormValues) => {
     try {
-      let response
+      let response: ApiResponse<RepositoryInfo> | undefined
 
       if (values.submitType === 'custom') {
         // 自定义仓库提交
@@ -87,8 +89,9 @@ export const HomePage = () => {
       } else {
         toast.error(response?.error || t('repository.form.submitFailed'))
       }
-    } catch (error: any) {
-      toast.error(error.message || t('repository.form.submitFailed'))
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, t('repository.form.submitFailed'))
+      toast.error(message)
     }
   }
 

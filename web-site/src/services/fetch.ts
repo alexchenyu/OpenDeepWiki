@@ -1,7 +1,7 @@
 // 统一的Fetch服务封装
 
 export interface FetchOptions extends RequestInit {
-  params?: Record<string, any>
+  params?: Record<string, unknown>
 }
 
 export interface ApiError {
@@ -17,7 +17,7 @@ class FetchService {
     this.baseURL = ''
   }
 
-  private buildURL(url: string, params?: Record<string, any>): string {
+  private buildURL(url: string, params?: Record<string, unknown>): string {
     const fullURL = url.startsWith('http') ? url : `${this.baseURL}${url}`
     
     if (!params) return fullURL
@@ -38,8 +38,8 @@ class FetchService {
       let errorMessage = `HTTP error! status: ${response.status}`
       
       try {
-        const errorData = await response.json()
-        errorMessage = errorData.message || errorData.error || errorMessage
+        const errorData = await response.json() as { message?: string; error?: string }
+        errorMessage = errorData.message ?? errorData.error ?? errorMessage
       } catch {
         // 如果无法解析JSON，使用默认错误消息
       }
@@ -75,7 +75,7 @@ class FetchService {
     return this.handleResponse<T>(response)
   }
 
-  async post<T>(url: string, data?: any, options: FetchOptions = {}): Promise<T> {
+  async post<T, D = unknown>(url: string, data?: D, options: FetchOptions = {}): Promise<T> {
     const { params, ...fetchOptions } = options
     const fullURL = this.buildURL(url, params)
     
@@ -86,13 +86,13 @@ class FetchService {
         'Content-Type': 'application/json',
         ...fetchOptions.headers,
       },
-      body: data ? JSON.stringify(data) : undefined,
+      body: data !== undefined ? JSON.stringify(data) : undefined,
     })
     
     return this.handleResponse<T>(response)
   }
 
-  async put<T>(url: string, data?: any, options: FetchOptions = {}): Promise<T> {
+  async put<T, D = unknown>(url: string, data?: D, options: FetchOptions = {}): Promise<T> {
     const { params, ...fetchOptions } = options
     const fullURL = this.buildURL(url, params)
     
@@ -103,7 +103,7 @@ class FetchService {
         'Content-Type': 'application/json',
         ...fetchOptions.headers,
       },
-      body: data ? JSON.stringify(data) : undefined,
+      body: data !== undefined ? JSON.stringify(data) : undefined,
     })
     
     return this.handleResponse<T>(response)

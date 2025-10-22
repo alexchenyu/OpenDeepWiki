@@ -23,7 +23,7 @@ export const useRepositories = (autoFetch = true) => {
     if (autoFetch) {
       fetchRepositories()
     }
-  }, [])
+  }, [autoFetch, fetchRepositories])
 
   // 搜索处理
   const handleSearch = useCallback((searchKeyword: string) => {

@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { toast } from 'sonner'
 import {
   ArrowLeft,
@@ -68,12 +69,12 @@ import { useRequireAuth } from '@/hooks/useAuth'
 import { languages, changeLanguage, getCurrentLanguage } from '@/i18n/index'
 
 // 创建表单验证模式的函数，支持i18n
-const createProfileFormSchema = (t: any) => z.object({
+const createProfileFormSchema = (t: TFunction) => z.object({
   name: z.string().min(2, t('settings.profile.validation.username_min')),
   email: z.string().email(t('settings.profile.validation.email_invalid')),
 })
 
-const createPasswordFormSchema = (t: any) => z.object({
+const createPasswordFormSchema = (t: TFunction) => z.object({
   currentPassword: z.string().min(1, t('settings.security.validation.current_password_required')),
   newPassword: z.string()
     .min(8, t('settings.security.validation.new_password_min'))
@@ -118,17 +119,19 @@ export default function SettingsPage() {
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
   const [avatarUrl, setAvatarUrl] = useState<string>('')
-  const [settings, setSettings] = useState({
+  type UserPreferenceSettings = {
+    emailNotifications: boolean
+    desktopNotifications: boolean
+    autoSave: boolean
+    language: string
+  }
+
+  const [settings, setSettings] = useState<UserPreferenceSettings>({
     emailNotifications: true,
     desktopNotifications: false,
     autoSave: true,
     language: getCurrentLanguage(),
   })
-
-  // 如果未认证且不在加载状态，组件会被重定向，这里直接返回null
-  if (!authLoading && !isAuthenticated) {
-    return null
-  }
 
   // 获取当前用户信息
   useEffect(() => {
@@ -171,6 +174,11 @@ export default function SettingsPage() {
     loadUserInfo()
     loadUserSettings()
   }, [isAuthenticated, profileForm, navigate])
+
+  // 如果未认证且不在加载状态，组件会被重定向，这里直接返回null
+  if (!authLoading && !isAuthenticated) {
+    return null
+  }
 
   // 处理个人信息更新
   const handleProfileUpdate = async (values: z.infer<typeof profileFormSchema>) => {
@@ -308,8 +316,12 @@ export default function SettingsPage() {
   }
 
   // 处理设置更新
-  const handleSettingChange = async (key: string, value: any) => {
-    const newSettings = { ...settings, [key]: value }
+  const handleSettingChange = async <K extends keyof UserPreferenceSettings>(
+    key: K,
+    value: UserPreferenceSettings[K]
+  ) => {
+    const previousValue = settings[key]
+    const newSettings: UserPreferenceSettings = { ...settings, [key]: value }
     setSettings(newSettings)
 
     try {
@@ -317,12 +329,12 @@ export default function SettingsPage() {
       
       // 特殊处理语言切换
       if (key === 'language') {
-        changeLanguage(value)
+        changeLanguage(String(value))
       }
     } catch (error) {
       console.error('更新设置失败:', error)
       // 回退设置
-      setSettings(prev => ({ ...prev, [key]: !value }))
+      setSettings(prev => ({ ...prev, [key]: previousValue }))
     }
   }
 

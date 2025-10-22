@@ -62,7 +62,7 @@ export default function DocumentPage({ className, branch }: DocumentPageProps) {
     }
 
     fetchDocument()
-  }, [owner, name, path, branch, selectedBranch, searchParams, i18n.language])
+  }, [owner, name, path, branch, selectedBranch, searchParams, i18n.language, t])
 
   // 检测页面是否有足够的标题来显示 TOC
   useEffect(() => {

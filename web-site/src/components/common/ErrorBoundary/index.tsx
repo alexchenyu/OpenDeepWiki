@@ -1,4 +1,4 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react'
+import { Component, ErrorInfo, ReactNode } from 'react'
 import { AlertTriangle, RefreshCcw, Home } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -168,21 +168,5 @@ export const ErrorFallback: React.FC<ErrorFallbackProps> = ({
     </div>
   </div>
 )
-
-// 高阶组件，用于包装需要错误边界的组件
-export const withErrorBoundary = <P extends object>(
-  Component: React.ComponentType<P>,
-  fallback?: ReactNode
-) => {
-  const WrappedComponent = (props: P) => (
-    <ErrorBoundary fallback={fallback}>
-      <Component {...props} />
-    </ErrorBoundary>
-  )
-
-  WrappedComponent.displayName = `withErrorBoundary(${Component.displayName || Component.name})`
-
-  return WrappedComponent
-}
 
 export default ErrorBoundary

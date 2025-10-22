@@ -1,6 +1,6 @@
 // 角色管理页面
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -25,6 +25,7 @@ import {
 import { Search, Plus, MoreHorizontal, Edit, Trash2, Shield, Settings, Copy, Users } from 'lucide-react'
 import { roleService, type RoleInfo } from '@/services/role.service'
 import { toast } from 'sonner'
+import { getErrorMessage } from '@/lib/errors'
 import RoleDialog from './RoleDialog'
 import RolePermissionDialog from './RolePermissionDialog'
 import RoleCopyDialog from './RoleCopyDialog'
@@ -48,44 +49,43 @@ const RolesPage: React.FC = () => {
   const [selectedRole, setSelectedRole] = useState<RoleInfo | null>(null)
 
   // 加载角色数据
-  const loadRoles = async () => {
+  const loadRoles = useCallback(async () => {
     try {
       setLoading(true)
       const response = await roleService.getRoleList({
         page: currentPage,
-        pageSize: pageSize,
-        keyword: searchQuery || undefined,
+        pageSize,
+        keyword: searchQuery.trim() || undefined,
         isActive: statusFilter
-      }) as any
-      // 处理嵌套的data结构
-      const data = response.data || response
-      setRoles(data.items || [])
-      setTotal(data.total || 0)
-    } catch (error) {
+      })
+      setRoles(response.items ?? [])
+      setTotal(response.total ?? 0)
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, '无法加载角色列表')
       console.error('Failed to load roles:', error)
       toast.error('加载失败', {
-        description: '无法加载角色列表'
+        description: message
       })
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentPage, pageSize, searchQuery, statusFilter])
 
   useEffect(() => {
-    loadRoles()
-  }, [currentPage, statusFilter])
+    void loadRoles()
+  }, [loadRoles])
 
   // 搜索防抖
   useEffect(() => {
     const timer = setTimeout(() => {
       if (currentPage === 1) {
-        loadRoles()
+        void loadRoles()
       } else {
         setCurrentPage(1)
       }
     }, 500)
     return () => clearTimeout(timer)
-  }, [searchQuery])
+  }, [searchQuery, currentPage, loadRoles])
 
   const getStatusBadge = (isActive: boolean) => {
     return (
@@ -120,10 +120,11 @@ const RolesPage: React.FC = () => {
       toast.success('删除成功', {
         description: '角色已被删除'
       })
-      loadRoles()
-    } catch (error: any) {
+      void loadRoles()
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, '无法删除角色')
       toast.error('删除失败', {
-        description: error?.message || '无法删除角色'
+        description: message
       })
     }
   }
@@ -155,7 +156,7 @@ const RolesPage: React.FC = () => {
   }
 
   const handleRoleDialogSuccess = () => {
-    loadRoles()
+    void loadRoles()
   }
 
   const handleToggleStatus = async (role: RoleInfo) => {
@@ -164,10 +165,11 @@ const RolesPage: React.FC = () => {
       toast.success('状态更新成功', {
         description: `角色已${role.isActive ? '禁用' : '启用'}`
       })
-      loadRoles()
-    } catch (error: any) {
+      void loadRoles()
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, '无法更新角色状态')
       toast.error('状态更新失败', {
-        description: error?.message || '无法更新角色状态'
+        description: message
       })
     }
   }

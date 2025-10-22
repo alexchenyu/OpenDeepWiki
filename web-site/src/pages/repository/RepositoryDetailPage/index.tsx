@@ -1,6 +1,6 @@
 // 仓库详情页面 - 概览
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -36,7 +36,7 @@ const RepositoryDetailPage = () => {
   const [loading, setLoading] = useState(true)
 
   // 初始化数据
-  const initializeData = async () => {
+  const initializeData = useCallback(async () => {
     if (!owner || !name) return
 
     setLoading(true)
@@ -50,11 +50,11 @@ const RepositoryDetailPage = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [fetchDocumentCatalog, name, owner, setRepository])
 
   useEffect(() => {
     initializeData()
-  }, [owner, name])
+  }, [initializeData])
 
   // 复制Git地址
   const handleCopyAddress = () => {

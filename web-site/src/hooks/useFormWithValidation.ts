@@ -1,4 +1,4 @@
-import { useForm, type UseFormProps, type UseFormReturn, type FieldValues } from 'react-hook-form'
+import { useForm, type UseFormProps, type UseFormReturn, type FieldValues, type FieldErrors } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useCallback } from 'react'
@@ -39,32 +39,50 @@ export function useFormWithValidation<T extends FieldValues = FieldValues>(
   } = options
 
   const form = useForm<T>({
-    resolver: zodResolver(schema) as any,
+    resolver: zodResolver(schema),
     mode: 'onChange',
     ...formOptions
   })
 
   const { formState: { isSubmitting } } = form
 
-  // 处理字段验证错误，显示 toast
-  const handleFieldErrors = useCallback((errors: typeof form.formState.errors) => {
+  const collectMessages = (errors: unknown): string[] => {
+    const messages: string[] = []
+
+    const traverse = (value: unknown): void => {
+      if (!value) return
+      if (Array.isArray(value)) {
+        value.forEach(traverse)
+        return
+      }
+      if (typeof value === 'object') {
+        const maybeFieldError = value as { message?: unknown }
+        if (typeof maybeFieldError.message === 'string') {
+          messages.push(maybeFieldError.message)
+        }
+        Object.values(value as Record<string, unknown>).forEach(traverse)
+      }
+    }
+
+    traverse(errors)
+    return messages
+  }
+
+  const handleFieldErrors = useCallback((errors: FieldErrors<T>) => {
     if (!showErrorToasts) return
 
-    const errorMessages = Object.values(errors)
-      .map(error => error?.message)
-      .filter(Boolean)
-
-    if (errorMessages.length > 0) {
-      errorMessages.forEach((message:any) => {
-        if (message) toast.error(message.toString())
-      })
-    }
+    const errorMessages = collectMessages(errors)
+    errorMessages.forEach(message => {
+      if (message) {
+        toast.error(message)
+      }
+    })
   }, [showErrorToasts])
 
   // 基础的表单提交处理
   const handleSubmit = useCallback((onValid: (data: T) => void | Promise<void>) => {
     return form.handleSubmit(
-      async (data:any) => {
+      async (data: T) => {
         try {
           await onValid(data)
           onSubmitSuccess?.(data)
@@ -83,7 +101,7 @@ export function useFormWithValidation<T extends FieldValues = FieldValues>(
   // 带 toast 提示的表单提交处理
   const submitWithToast = useCallback((onValid: (data: T) => void | Promise<void>) => {
     return form.handleSubmit(
-      async (data) => {
+      async (data: T) => {
         const toastId = submitToast.loading ? toast.loading(submitToast.loading) : null
 
         try {
@@ -116,7 +134,7 @@ export function useFormWithValidation<T extends FieldValues = FieldValues>(
     handleSubmit,
     isSubmitting,
     submitWithToast
-  } as any
+  }
 }
 
 // 预定义的常用验证模式
@@ -152,7 +170,7 @@ export interface FormFieldConfig {
   required?: boolean
   disabled?: boolean
   options?: Array<{ label: string; value: string }>
-  validation?: z.ZodSchema<any>
+  validation?: z.ZodSchema<unknown>
 }
 
 // 动态表单生成器的类型
@@ -166,18 +184,18 @@ export interface DynamicFormConfig<T extends FieldValues> {
 }
 
 // 批量操作表单的 Hook
-export function useBatchForm<T extends FieldValues>(
+export function useBatchForm<T extends FieldValues, U = unknown>(
   schema: z.ZodSchema<T>,
   batchSize: number = 10
 ) {
   const form = useFormWithValidation({ schema })
 
   const processBatch = useCallback(async (
-    items: any[],
-    processor: (item: any, data: T) => Promise<void>
+    items: U[],
+    processor: (item: U, data: T) => Promise<void>
   ) => {
     const data = form.getValues()
-    const batches = []
+    const batches: U[][] = []
 
     for (let i = 0; i < items.length; i += batchSize) {
       batches.push(items.slice(i, i + batchSize))

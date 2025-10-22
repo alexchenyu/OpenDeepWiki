@@ -1,6 +1,6 @@
 // 文档树组件
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import {
   ChevronRight,

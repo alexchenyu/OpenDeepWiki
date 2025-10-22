@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import mermaid from 'mermaid'
 import * as Dialog from '@radix-ui/react-dialog'
-import { cn } from '@/lib/utils'
+import { fixMermaidCode, preCleanMermaidCode } from '@/lib/mermaidParserFixer.v2'
 import {
   Copy,
   Check,
@@ -10,7 +10,6 @@ import {
   RefreshCw,
   ZoomIn,
   ZoomOut,
-  Move,
   X,
   RotateCcw
 } from 'lucide-react'
@@ -18,7 +17,6 @@ import {
 interface MermaidEnhancedProps {
   code: string
   title?: string
-  className?: string
 }
 
 // 根据代码内容推断图表类型和标题
@@ -91,13 +89,13 @@ const getMermaidTheme = (isDark: boolean) => ({
 
 export default function MermaidEnhanced({
   code,
-  title,
-  className
+  title
 }: MermaidEnhancedProps) {
   // 使用传入的标题或根据代码推断标题
   const diagramTitle = title || inferDiagramType(code)
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGElement | null>(null)
+  const sanitizedCodeRef = useRef<string>('')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isCopied, setIsCopied] = useState(false)
@@ -139,26 +137,6 @@ export default function MermaidEnhanced({
       console.error('Failed to copy:', err)
     }
   }, [code])
-
-  // 导出为 SVG
-  const exportSVG = useCallback(() => {
-    if (!svgRef.current) return
-
-    const svgClone = svgRef.current.cloneNode(true) as SVGElement
-    svgClone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
-
-    const svgString = new XMLSerializer().serializeToString(svgClone)
-    const blob = new Blob([svgString], { type: 'image/svg+xml' })
-    const url = URL.createObjectURL(blob)
-
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${diagramTitle.replace(/\s+/g, '-')}.svg`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-  }, [diagramTitle])
 
   // 导出为 PNG
   const exportPNG = useCallback(async () => {
@@ -244,16 +222,38 @@ export default function MermaidEnhanced({
         mermaid.initialize(getMermaidTheme(isDarkMode))
 
         // 验证语法
-        const cleanCode = code.trim()
-        if (!cleanCode) {
+        const trimmedCode = code.trim()
+        if (!trimmedCode) {
           throw new Error('Empty diagram code')
         }
 
-        await mermaid.parse(cleanCode)
+        // 使用v2系统性修复器
+        const cleanCode = preCleanMermaidCode(trimmedCode)
+        const fixResult = await fixMermaidCode(
+          cleanCode,
+          async (code: string) => {
+            try {
+              return await Promise.race([
+                mermaid.parse(code),
+                new Promise<boolean>((_, reject) =>
+                  setTimeout(() => reject(new Error('Parse timeout')), 3000)
+                )
+              ])
+            } catch (error) {
+              throw error
+            }
+          },
+          15 // 总共最多15次尝试（阶段1: 3次，阶段2: 10次，阶段3-5: 各1次）
+        )
+
+        sanitizedCodeRef.current = fixResult.code
+
+        console.log('Fix result:', fixResult)
+        console.log('About to render - code length:', fixResult.code.length)
 
         // 渲染图表
         const id = `mermaid-${Date.now()}`
-        const { svg } = await mermaid.render(id, cleanCode)
+        const { svg } = await mermaid.render(id, fixResult.code)
 
         if (containerRef.current) {
           containerRef.current.innerHTML = svg
@@ -445,6 +445,14 @@ export default function MermaidEnhanced({
                 <pre className="mt-4 overflow-auto rounded p-3 text-xs bg-muted">
                   <code>{code}</code>
                 </pre>
+                {sanitizedCodeRef.current && sanitizedCodeRef.current !== code && (
+                  <div className="mt-4">
+                    <div className="text-xs text-muted-foreground mb-2">清理后的代码：</div>
+                    <pre className="overflow-auto rounded p-3 text-xs bg-muted">
+                      <code>{sanitizedCodeRef.current}</code>
+                    </pre>
+                  </div>
+                )}
               </div>
             )}
 

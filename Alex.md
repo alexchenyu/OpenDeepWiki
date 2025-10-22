@@ -46,13 +46,17 @@ git clone https://github.com/AIDotNet/OpenDeepWiki.git
 ./deploy-fix.sh
 
 # 方法2：手动执行（完整版，前台运行）
-COMPOSE="sudo docker compose"
+cd web-site
+npm install
+npm run build
+cd ..
+COMPOSE="docker compose"
 sudo make down-mem0                   # 停止所有服务
 $COMPOSE -f docker-compose-mem0.yml down --volumes --remove-orphans
 $COMPOSE -f docker-compose-mem0.yml build --no-cache mem0 koalawiki
 # sudo rm -rf data/ postgres_db/ neo4j_data/  # 清理数据库（可选）
 rm mem0.log
-sudo make dev-mem0 2>&1 | tee mem0.log
+make dev-mem0 2>&1 | tee mem0.log
 
 # sudo make down-mem0 
 # sudo docker compose -f docker-compose-mem0.yml down
@@ -381,3 +385,277 @@ docker logs opendeepwiki-koalawiki-1 | grep -i "mermaid\|repair"
 docker exec -it opendeepwiki-postgres-1 psql -U postgres -d KoalaWiki -c \
   "SELECT \"Id\", \"Title\", LENGTH(\"Content\") as content_length FROM \"DocumentFileItems\" WHERE \"Content\" LIKE '%\`\`\`mermaid%' LIMIT 5;"
 ```
+
+---
+
+## 如何部分触发文档重新生成
+
+### 场景说明
+
+当需要重新生成特定文档（例如修复了文档内容错误、更新了生成逻辑）而不想重新分析整个仓库时，可以使用以下方法。
+
+### 前置条件
+
+- 已经完成后端代码修改（如果有）
+- 后端服务已重新构建并重启
+- 数据库连接正常
+
+### 操作步骤
+
+#### 1. 获取仓库ID
+
+```bash
+# 通过仓库名称查询仓库ID
+docker exec opendeepwiki_postgres_1 psql -U postgres -d KoalaWiki -c \
+  "SELECT \"Id\", \"Name\", \"OrganizationName\", \"Status\" FROM \"Warehouses\" WHERE \"Name\" = 'openbmc';"
+```
+
+**输出示例**：
+```
+Id                                   | Name    | OrganizationName | Status
+-------------------------------------+---------+------------------+--------
+515f8a98-e56f-4dd1-bb69-90b27e6b7d13 | openbmc | openbmc          | 2
+```
+
+保存 `Id` 值，后续步骤需要使用。
+
+#### 2. 标记需要重新生成的文档为未完成
+
+**方法A：重新生成引用特定DocumentFileItem的所有文档**
+
+如果某个 DocumentFileItem 被删除或损坏，需要重新生成所有引用它的文档目录：
+
+```bash
+# 查找引用该文档的所有目录条目
+WAREHOUSE_ID="515f8a98-e56f-4dd1-bb69-90b27e6b7d13"
+DOCUMENT_ID="20490cb3-7c0e-4171-893d-f2c225a1a5ac"  # 被删除的文档ID
+
+docker exec opendeepwiki_postgres_1 psql -U postgres -d KoalaWiki -c \
+  "SELECT \"Id\", \"Name\", \"IsCompleted\" FROM \"DocumentCatalogs\"
+   WHERE \"WarehouseId\" = '$WAREHOUSE_ID' AND \"DucumentId\" = '$DOCUMENT_ID';"
+
+# 标记为未完成
+docker exec opendeepwiki_postgres_1 psql -U postgres -d KoalaWiki -c \
+  "UPDATE \"DocumentCatalogs\"
+   SET \"IsCompleted\" = false
+   WHERE \"WarehouseId\" = '$WAREHOUSE_ID' AND \"DucumentId\" = '$DOCUMENT_ID';"
+```
+
+**方法B：重新生成特定名称的文档**
+
+```bash
+WAREHOUSE_ID="515f8a98-e56f-4dd1-bb69-90b27e6b7d13"
+
+# 标记特定文档为未完成（支持模糊匹配）
+docker exec opendeepwiki_postgres_1 psql -U postgres -d KoalaWiki -c \
+  "UPDATE \"DocumentCatalogs\"
+   SET \"IsCompleted\" = false
+   WHERE \"WarehouseId\" = '$WAREHOUSE_ID'
+   AND (\"Name\" LIKE '%深入分析%' OR \"Name\" LIKE '%架构分析%' OR \"Name\" LIKE '%基本操作%');"
+```
+
+**方法C：重新生成所有文档**
+
+```bash
+WAREHOUSE_ID="515f8a98-e56f-4dd1-bb69-90b27e6b7d13"
+
+# 标记该仓库的所有文档为未完成
+docker exec opendeepwiki_postgres_1 psql -U postgres -d KoalaWiki -c \
+  "UPDATE \"DocumentCatalogs\"
+   SET \"IsCompleted\" = false
+   WHERE \"WarehouseId\" = '$WAREHOUSE_ID';"
+```
+
+#### 3. 触发仓库重新处理
+
+```bash
+WAREHOUSE_ID="515f8a98-e56f-4dd1-bb69-90b27e6b7d13"
+
+# 将仓库状态设置为 Pending (1)，触发后台任务处理
+docker exec opendeepwiki_postgres_1 psql -U postgres -d KoalaWiki -c \
+  "UPDATE \"Warehouses\"
+   SET \"Status\" = 1
+   WHERE \"Id\" = '$WAREHOUSE_ID';"
+```
+
+**仓库状态说明**：
+- `0` = NotStarted（未开始）
+- `1` = Pending（处理中）- **设置此状态触发重新生成**
+- `2` = Completed（已完成）
+- `3` = Failed（失败）
+
+#### 4. 监控重新生成进度
+
+**方法1：查看未完成文档数量**
+
+```bash
+WAREHOUSE_ID="515f8a98-e56f-4dd1-bb69-90b27e6b7d13"
+
+# 持续监控未完成文档数量
+watch -n 5 "docker exec opendeepwiki_postgres_1 psql -U postgres -d KoalaWiki -c \
+  'SELECT COUNT(*) as incomplete_docs FROM \"DocumentCatalogs\"
+   WHERE \"WarehouseId\" = '\''$WAREHOUSE_ID'\'' AND \"IsCompleted\" = false;'"
+```
+
+**方法2：查看仓库处理状态**
+
+```bash
+WAREHOUSE_ID="515f8a98-e56f-4dd1-bb69-90b27e6b7d13"
+
+docker exec opendeepwiki_postgres_1 psql -U postgres -d KoalaWiki -c \
+  "SELECT \"Name\", \"Status\" FROM \"Warehouses\" WHERE \"Id\" = '$WAREHOUSE_ID';"
+```
+
+- 当 `Status` 从 `1` (Pending) 变为 `2` (Completed) 时，表示处理完成
+
+**方法3：实时查看后台日志**
+
+```bash
+# 实时监控文档生成日志
+docker logs -f opendeepwiki_koalawiki_1
+
+# 或过滤关键信息
+docker logs -f opendeepwiki_koalawiki_1 | grep -i "document\|generating\|completed"
+```
+
+**方法4：查看已生成的文档**
+
+```bash
+# 查看最近生成的文档
+docker exec opendeepwiki_postgres_1 psql -U postgres -d KoalaWiki -c \
+  "SELECT \"Title\", \"CreatedAt\", length(\"Content\") as content_length
+   FROM \"DocumentFileItems\"
+   WHERE \"Title\" LIKE '%OpenBMC%' OR \"Title\" LIKE '%架构%' OR \"Title\" LIKE '%操作%'
+   ORDER BY \"CreatedAt\" DESC
+   LIMIT 10;"
+```
+
+#### 5. 验证生成结果
+
+文档生成完成后，访问对应页面验证：
+
+```bash
+# 查看仓库的文档目录
+curl -s "http://localhost:8080/api/DocumentCatalog/DocumentCatalogs?organizationName=openbmc&name=openbmc&branch=master" | jq '.items[] | {label: .label, completed: .completed}'
+```
+
+或直接在浏览器访问：
+- http://localhost:8080/openbmc/openbmc/deep-dive?branch=master
+- http://localhost:8080/openbmc/openbmc/getting-started_basic-operations?branch=master
+
+### 常见场景
+
+#### 场景1：修复后端代码后重新生成文档
+
+```bash
+# 1. 重新构建后端
+cd /home/alex_chen/OpenDeepWiki
+cd web-site && npm run build && cd ..
+docker-compose -f docker-compose-mem0.yml build --no-cache koalawiki
+docker-compose -f docker-compose-mem0.yml restart koalawiki
+
+# 2. 标记文档为未完成
+WAREHOUSE_ID="your-warehouse-id"
+docker exec opendeepwiki_postgres_1 psql -U postgres -d KoalaWiki -c \
+  "UPDATE \"DocumentCatalogs\" SET \"IsCompleted\" = false WHERE \"WarehouseId\" = '$WAREHOUSE_ID';"
+
+# 3. 触发重新生成
+docker exec opendeepwiki_postgres_1 psql -U postgres -d KoalaWiki -c \
+  "UPDATE \"Warehouses\" SET \"Status\" = 1 WHERE \"Id\" = '$WAREHOUSE_ID';"
+
+# 4. 监控进度
+docker logs -f opendeepwiki_koalawiki_1
+```
+
+#### 场景2：删除了错误的文档后重新生成
+
+```bash
+# 1. 删除错误的文档
+docker exec opendeepwiki_postgres_1 psql -U postgres -d KoalaWiki -c \
+  "DELETE FROM \"DocumentFileItems\" WHERE \"Id\" IN ('doc-id-1', 'doc-id-2');"
+
+# 2. 标记引用这些文档的目录为未完成
+WAREHOUSE_ID="your-warehouse-id"
+docker exec opendeepwiki_postgres_1 psql -U postgres -d KoalaWiki -c \
+  "UPDATE \"DocumentCatalogs\"
+   SET \"IsCompleted\" = false
+   WHERE \"WarehouseId\" = '$WAREHOUSE_ID'
+   AND \"DucumentId\" IN ('doc-id-1', 'doc-id-2');"
+
+# 3. 触发重新生成
+docker exec opendeepwiki_postgres_1 psql -U postgres -d KoalaWiki -c \
+  "UPDATE \"Warehouses\" SET \"Status\" = 1 WHERE \"Id\" = '$WAREHOUSE_ID';"
+```
+
+#### 场景3：只重新生成特定页面
+
+```bash
+# 1. 查找目标文档的目录ID
+WAREHOUSE_ID="your-warehouse-id"
+docker exec opendeepwiki_postgres_1 psql -U postgres -d KoalaWiki -c \
+  "SELECT \"Id\", \"Name\", \"Url\" FROM \"DocumentCatalogs\"
+   WHERE \"WarehouseId\" = '$WAREHOUSE_ID' AND \"Name\" LIKE '%深入分析%';"
+
+# 2. 标记为未完成
+CATALOG_ID="catalog-id"
+docker exec opendeepwiki_postgres_1 psql -U postgres -d KoalaWiki -c \
+  "UPDATE \"DocumentCatalogs\" SET \"IsCompleted\" = false WHERE \"Id\" = '$CATALOG_ID';"
+
+# 3. 触发重新生成
+docker exec opendeepwiki_postgres_1 psql -U postgres -d KoalaWiki -c \
+  "UPDATE \"Warehouses\" SET \"Status\" = 1 WHERE \"Id\" = '$WAREHOUSE_ID';"
+```
+
+### 注意事项
+
+1. **不要删除数据库**：使用 `UPDATE` 而不是 `DELETE` 来保留文档结构
+2. **先测试小范围**：建议先标记少量文档测试，确认无误后再批量操作
+3. **监控资源使用**：文档生成会消耗大量AI token，注意成本控制
+4. **预计时间**：根据文档数量，重新生成可能需要10-30分钟
+5. **并发限制**：系统有并发限制（`TASK_MAX_SIZE_PER_USER`），避免同时触发多个仓库
+
+### 完整示例脚本
+
+```bash
+#!/bin/bash
+# regenerate_docs.sh - 重新生成指定仓库的文档
+
+WAREHOUSE_ID="515f8a98-e56f-4dd1-bb69-90b27e6b7d13"
+DB_CONTAINER="opendeepwiki_postgres_1"
+
+echo "=== 开始重新生成文档 ==="
+
+# 1. 标记所有文档为未完成
+echo "1. 标记文档为未完成..."
+docker exec $DB_CONTAINER psql -U postgres -d KoalaWiki -c \
+  "UPDATE \"DocumentCatalogs\" SET \"IsCompleted\" = false WHERE \"WarehouseId\" = '$WAREHOUSE_ID';"
+
+# 2. 触发重新生成
+echo "2. 触发重新生成..."
+docker exec $DB_CONTAINER psql -U postgres -d KoalaWiki -c \
+  "UPDATE \"Warehouses\" SET \"Status\" = 1 WHERE \"Id\" = '$WAREHOUSE_ID';"
+
+# 3. 监控进度
+echo "3. 监控进度（按Ctrl+C停止）..."
+while true; do
+    STATUS=$(docker exec $DB_CONTAINER psql -U postgres -d KoalaWiki -t -c \
+      "SELECT \"Status\" FROM \"Warehouses\" WHERE \"Id\" = '$WAREHOUSE_ID';")
+    INCOMPLETE=$(docker exec $DB_CONTAINER psql -U postgres -d KoalaWiki -t -c \
+      "SELECT COUNT(*) FROM \"DocumentCatalogs\" WHERE \"WarehouseId\" = '$WAREHOUSE_ID' AND \"IsCompleted\" = false;")
+
+    echo "$(date +%H:%M:%S) - Status: $STATUS | 未完成: $INCOMPLETE"
+
+    if [ "$STATUS" -eq 2 ]; then
+        echo "=== 重新生成完成！ ==="
+        break
+    fi
+
+    sleep 10
+done
+```
+
+### 相关资源
+
+- 仓库状态枚举：`KoalaWiki.Domains/Warehouse/WarehouseStatus.cs`
+- 文档处理服务：`src/KoalaWiki/KoalaWarehouse/DocumentPending/DocumentPendingService.cs`
+- 文档目录服务：`src/KoalaWiki/Services/DocumentCatalogService.cs`

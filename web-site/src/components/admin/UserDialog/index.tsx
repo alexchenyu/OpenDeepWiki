@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { toast } from 'sonner'
-import { userService, roleService, UserInfo, RoleInfo } from '@/services/admin.service'
+import { userService, UserInfo } from '@/services/admin.service'
 import { Upload, X } from 'lucide-react'
 
 interface UserDialogProps {
@@ -34,7 +34,6 @@ const UserDialog: React.FC<UserDialogProps> = ({
   const { t } = useTranslation()
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
-  const [roles, setRoles] = useState<RoleInfo[]>([])
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -46,32 +45,16 @@ const UserDialog: React.FC<UserDialogProps> = ({
 
   const isEdit = !!user
 
-  // 重置表单
-  const resetForm = () => {
-    setForm({
-      name: user?.name || '',
-      email: user?.email || '',
-      password: '',
-      confirmPassword: '',
-      avatar: user?.avatar || ''
-    })
-    setErrors({})
-  }
-
-  // 加载角色列表
-  const loadRoles = async () => {
-    try {
-      const response = await roleService.getAllRoles()
-      setRoles(response || [])
-    } catch (error) {
-      console.error('Failed to load roles:', error)
-    }
-  }
-
   useEffect(() => {
     if (open) {
-      resetForm()
-      loadRoles()
+      setForm({
+        name: user?.name || '',
+        email: user?.email || '',
+        password: '',
+        confirmPassword: '',
+        avatar: user?.avatar || ''
+      })
+      setErrors({})
     }
   }, [open, user])
 
@@ -142,8 +125,17 @@ const UserDialog: React.FC<UserDialogProps> = ({
 
       onOpenChange(false)
       onSuccess?.()
-    } catch (error: any) {
-      const message = error?.response?.data?.message || error?.message || '操作失败'
+    } catch (error: unknown) {
+      const message = (() => {
+        if (typeof error === 'string') {
+          return error
+        }
+        if (error && typeof error === 'object') {
+          const maybeError = error as { response?: { data?: { message?: string } }; message?: string }
+          return maybeError.response?.data?.message ?? maybeError.message ?? '操作失败'
+        }
+        return '操作失败'
+      })()
       toast.error('操作失败', {
         description: message
       })
@@ -190,7 +182,8 @@ const UserDialog: React.FC<UserDialogProps> = ({
       toast.success('上传成功', {
         description: '头像已更新'
       })
-    } catch (error) {
+    } catch (error: unknown) {
+      console.error('Avatar upload failed:', error)
       toast.error('上传失败', {
         description: '无法上传头像'
       })

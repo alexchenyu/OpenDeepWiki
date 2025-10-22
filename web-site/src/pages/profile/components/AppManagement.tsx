@@ -1,5 +1,5 @@
 // 应用管理组件
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -52,6 +52,7 @@ import {
 } from 'lucide-react'
 import { appConfigService } from '@/services/appConfigService'
 import type { AppConfigOutput, AppConfigInput } from '@/types'
+import { getErrorMessage } from '@/lib/errors'
 
 export const AppManagement: React.FC = () => {
   const toast = (opts: { title: string; description?: string; variant?: 'destructive' | string }) => {
@@ -84,26 +85,27 @@ export const AppManagement: React.FC = () => {
   const [newQuestion, setNewQuestion] = useState('')
 
   // 加载应用列表
-  const loadApps = async () => {
+  const loadApps = useCallback(async () => {
     setLoading(true)
     try {
       const data = await appConfigService.getAppConfigs()
       setApps(data)
-    } catch (error: any) {
+    } catch (error) {
+      const message = getErrorMessage(error, '无法加载应用列表')
       toast({
         title: '加载失败',
-        description: error.message || '无法加载应用列表',
+        description: message,
         variant: 'destructive',
       })
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
 
   useEffect(() => {
-    loadApps()
-  }, [])
+    void loadApps()
+  }, [loadApps])
 
   // 生成应用ID
   const generateAppId = () => {
@@ -112,7 +114,10 @@ export const AppManagement: React.FC = () => {
   }
 
   // 处理表单输入
-  const handleInputChange = (field: string, value: any) => {
+  const handleInputChange = <K extends keyof AppConfigInput>(
+    field: K,
+    value: AppConfigInput[K]
+  ) => {
     setFormData(prev => ({ ...prev, [field]: value }))
   }
 
@@ -210,11 +215,12 @@ export const AppManagement: React.FC = () => {
         })
       }
       setDialogOpen(false)
-      loadApps()
-    } catch (error: any) {
+      await loadApps()
+    } catch (error) {
+      const message = getErrorMessage(error, '保存应用配置时出错')
       toast({
         title: '操作失败',
-        description: error.message || '保存应用配置时出错',
+        description: message,
         variant: 'destructive',
       })
     }
@@ -231,11 +237,12 @@ export const AppManagement: React.FC = () => {
         description: '应用已删除',
       })
       setDeleteDialogOpen(false)
-      loadApps()
-    } catch (error: any) {
+      await loadApps()
+    } catch (error) {
+      const message = getErrorMessage(error, '删除应用时出错')
       toast({
         title: '删除失败',
-        description: error.message || '删除应用时出错',
+        description: message,
         variant: 'destructive',
       })
     }
@@ -245,15 +252,16 @@ export const AppManagement: React.FC = () => {
   const toggleAppStatus = async (appId: string) => {
     try {
       await appConfigService.toggleAppConfig(appId)
-      loadApps()
+      await loadApps()
       toast({
         title: '状态已更新',
         description: '应用状态已切换',
       })
-    } catch (error: any) {
+    } catch (error) {
+      const message = getErrorMessage(error, '切换状态时出错')
       toast({
         title: '操作失败',
-        description: error.message || '切换状态时出错',
+        description: message,
         variant: 'destructive',
       })
     }

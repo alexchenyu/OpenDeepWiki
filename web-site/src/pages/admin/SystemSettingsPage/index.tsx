@@ -37,7 +37,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-
+import type { SettingUpdateValue } from './types'
 import BasicSettingsTab from './components/BasicSettingsTab'
 import EmailSettingsTab from './components/EmailSettingsTab'
 import AISettingsTab from './components/AISettingsTab'
@@ -47,9 +47,7 @@ import ThirdPartySettingsTab from './components/ThirdPartySettingsTab'
 import DocumentSettingsTab from './components/DocumentSettingsTab'
 import SettingsImportExport from './components/SettingsImportExport'
 
-interface SystemSettingsPageProps {}
-
-const SystemSettingsPage: React.FC<SystemSettingsPageProps> = () => {
+const SystemSettingsPage: React.FC = () => {
   const { t } = useTranslation()
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
@@ -122,7 +120,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = () => {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [hasUnsavedChanges])
 
-  const updateSetting = useCallback((group: string, key: string, value: any) => {
+  const updateSetting = useCallback((group: string, key: string, value: SettingUpdateValue) => {
     setSettings(prev => {
       const newSettings = { ...prev }
       if (newSettings[group]) {
@@ -230,6 +228,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = () => {
         title: t('settings.restartInitiated'),
       })
     } catch (error) {
+      console.error('Failed to restart system:', error)
       toast({
         title: t('settings.restartFailed'),
         variant: 'destructive',
@@ -242,7 +241,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = () => {
     const groupSettings = settings[group] || []
     const commonProps = {
       settings: groupSettings,
-      onUpdate: (key: string, value: any) => updateSetting(group, key, value),
+      onUpdate: (key: string, value: SettingUpdateValue) => updateSetting(group, key, value),
       validationErrors,
       loading: loading || saving
     }

@@ -214,7 +214,7 @@ export const RepositoryForm: React.FC<RepositoryFormProps> = ({
     }
   }
 
-  const handleFieldChange = (field: string, value: any) => {
+  const handleFieldChange = <K extends keyof RepositoryFormValues>(field: K, value: RepositoryFormValues[K]) => {
     setFormData(prev => ({ ...prev, [field]: value }))
   }
 

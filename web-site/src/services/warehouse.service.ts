@@ -2,10 +2,25 @@
 
 import { fetchService } from './fetch'
 import type {
-  RepositoryInfo,
   ApiResponse,
+  BranchListResponse,
+  DocumentCatalogResponse,
+  DocumentCommitRecord,
+  DocumentDetailResponse,
+  LastWarehouseSummary,
+  MiniMapResult,
+  RepositoryInfo,
+  ResultDto,
   WarehouseListResponse
 } from '@/types/repository'
+import { getErrorMessage } from '@/lib/errors'
+
+type BranchListData = {
+  branches?: string[]
+  defaultBranch?: string
+}
+
+type QueryParams = Record<string, string | number | boolean | undefined>
 
 /**
  * Repository submission interface
@@ -30,16 +45,6 @@ export interface CustomWarehouseSubmitRequest {
   email?: string | null
 }
 
-/**
- * 获取仓库分支列表的返回结构
- */
-export interface BranchListResponse {
-  success: boolean
-  data: string[]
-  defaultBranch?: string
-  error?: string
-}
-
 class WarehouseService {
   private basePath = '/api/Warehouse'
 
@@ -51,10 +56,11 @@ class WarehouseService {
     pageSize: number,
     keyword?: string
   ): Promise<WarehouseListResponse> {
-    const params: any = { page, pageSize }
-    if (keyword && keyword !== 'undefined') {
-      params.keyword = keyword
-    }
+    const params = {
+      page,
+      pageSize,
+      ...(keyword && keyword !== 'undefined' ? { keyword } : {})
+    } satisfies QueryParams
 
     return fetchService.get<WarehouseListResponse>(
       `${this.basePath}/WarehouseList`,
@@ -80,12 +86,15 @@ class WarehouseService {
     name: string,
     branch?: string,
     languageCode?: string
-  ): Promise<any> {
-    const params: any = { organizationName, name }
-    if (branch) params.branch = branch
-    if (languageCode) params.languageCode = languageCode
+  ): Promise<DocumentCatalogResponse> {
+    const params = {
+      organizationName,
+      name,
+      ...(branch ? { branch } : {}),
+      ...(languageCode ? { languageCode } : {})
+    } satisfies QueryParams
 
-    return fetchService.get<any>(
+    return fetchService.get<DocumentCatalogResponse>(
       '/api/DocumentCatalog/DocumentCatalogs',
       { params }
     )
@@ -100,12 +109,16 @@ class WarehouseService {
     path: string,
     branch?: string,
     languageCode?: string
-  ): Promise<any> {
-    const params: any = { owner, name, path }
-    if (branch) params.branch = branch
-    if (languageCode) params.languageCode = languageCode
+  ): Promise<DocumentDetailResponse> {
+    const params = {
+      owner,
+      name,
+      path,
+      ...(branch ? { branch } : {}),
+      ...(languageCode ? { languageCode } : {})
+    } satisfies QueryParams
 
-    return fetchService.get<any>(
+    return fetchService.get<DocumentDetailResponse>(
       '/api/DocumentCatalog/DocumentById',
       { params }
     )
@@ -121,42 +134,39 @@ class WarehouseService {
   ): Promise<BranchListResponse> {
     try {
       // 构建查询参数
-      const params = new URLSearchParams({
-        address: repoUrl
-      })
-
-      if (username) {
-        params.append('gitUserName', username)
-      }
-      if (password) {
-        params.append('gitPassword', password)
-      }
-
-      const response = await fetchService.get<any>(
-        `${this.basePath}/BranchList?${params.toString()}`
+      const response = await fetchService.get<ResultDto<BranchListData>>(
+        `${this.basePath}/BranchList`,
+        {
+          params: {
+            address: repoUrl,
+            gitUserName: username ?? undefined,
+            gitPassword: password ?? undefined
+          }
+        }
       )
 
       if (response.code === 200 && response.data) {
         return {
           success: true,
-          data: response.data.branches || [],
+          data: response.data.branches ?? [],
           defaultBranch: response.data.defaultBranch
         }
-      } else {
-        return {
-          success: false,
-          data: ['main', 'master'],
-          defaultBranch: 'main',
-          error: response.message || '获取分支列表失败'
-        }
       }
-    } catch (error) {
-      console.error('获取分支列表失败:', error)
+
       return {
         success: false,
         data: ['main', 'master'],
         defaultBranch: 'main',
-        error: '网络请求失败'
+        error: response.message || '获取分支列表失败'
+      }
+    } catch (error) {
+      console.error('获取分支列表失败:', error)
+      const message = getErrorMessage(error, '获取分支列表失败')
+      return {
+        success: false,
+        data: ['main', 'master'],
+        defaultBranch: 'main',
+        error: message
       }
     }
   }
@@ -164,8 +174,8 @@ class WarehouseService {
   /**
    * 获取最近的仓库信息
    */
-  async getLastWarehouse(address: string): Promise<any> {
-    return fetchService.get<any>(
+  async getLastWarehouse(address: string): Promise<LastWarehouseSummary> {
+    return fetchService.get<LastWarehouseSummary>(
       `${this.basePath}/LastWarehouse`,
       { params: { address } }
     )
@@ -178,11 +188,14 @@ class WarehouseService {
     owner: string,
     name: string,
     branch?: string
-  ): Promise<any> {
-    const params: any = { owner, name }
-    if (branch) params.branch = branch
+  ): Promise<DocumentCommitRecord> {
+    const params = {
+      owner,
+      name,
+      ...(branch ? { branch } : {})
+    } satisfies QueryParams
 
-    return fetchService.get<any>(
+    return fetchService.get<DocumentCommitRecord>(
       `${this.basePath}/ChangeLog`,
       { params }
     )
@@ -191,8 +204,8 @@ class WarehouseService {
   /**
    * 获取文件内容
    */
-  async getFileContent(warehouseId: string, path: string): Promise<any> {
-    return fetchService.get<any>(
+  async getFileContent(warehouseId: string, path: string): Promise<ResultDto<string>> {
+    return fetchService.get<ResultDto<string>>(
       `${this.basePath}/FileContent`,
       { params: { warehouseId, path } }
     )
@@ -205,8 +218,8 @@ class WarehouseService {
     organizationName: string,
     name: string,
     filePath: string
-  ): Promise<any> {
-    return fetchService.get<any>(
+  ): Promise<ResultDto<string>> {
+    return fetchService.get<ResultDto<string>>(
       `${this.basePath}/filecontentLine`,
       { params: { organizationName, name, filePath } }
     )
@@ -215,12 +228,23 @@ class WarehouseService {
   /**
    * 上传并提交仓库
    */
-  async uploadAndSubmitWarehouse(formData: FormData): Promise<any> {
+  async uploadAndSubmitWarehouse(formData: FormData): Promise<ApiResponse<RepositoryInfo>> {
     // FormData不需要设置Content-Type，让浏览器自动设置
     return fetch(`${this.basePath}/UploadAndSubmitWarehouse`, {
       method: 'POST',
       body: formData
-    }).then(res => res.json())
+    }).then(async (res) => {
+      if (!res.ok) {
+        let errorBody: unknown
+        try {
+          errorBody = await res.json()
+        } catch {
+          errorBody = undefined
+        }
+        throw new Error(getErrorMessage(errorBody, '上传仓库失败'))
+      }
+      return res.json() as Promise<ApiResponse<RepositoryInfo>>
+    })
   }
 
   /**
@@ -242,8 +266,13 @@ class WarehouseService {
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.message || '下载失败')
+      let errorBody: unknown
+      try {
+        errorBody = await response.json()
+      } catch {
+        errorBody = undefined
+      }
+      throw new Error(getErrorMessage(errorBody, '下载失败'))
     }
 
     // 从响应头获取文件名
@@ -287,11 +316,14 @@ class WarehouseService {
     owner: string,
     name: string,
     branch?: string
-  ): Promise<any> {
-    const params: any = { owner, name }
-    if (branch) params.branch = branch
+  ): Promise<ResultDto<MiniMapResult>> {
+    const params = {
+      owner,
+      name,
+      ...(branch ? { branch } : {})
+    } satisfies QueryParams
 
-    return fetchService.get<any>(
+    return fetchService.get<ResultDto<MiniMapResult>>(
       `${this.basePath}/minimap`,
       { params }
     )

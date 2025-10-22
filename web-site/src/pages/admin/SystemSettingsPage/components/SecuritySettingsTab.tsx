@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { SystemSetting, ValidationErrors } from '@/types/systemSettings'
+import type { SettingUpdateValue } from '../types'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -26,7 +27,7 @@ import { Badge } from '@/components/ui/badge'
 
 interface SecuritySettingsTabProps {
   settings: SystemSetting[]
-  onUpdate: (key: string, value: any) => void
+  onUpdate: (key: string, value: SettingUpdateValue) => void
   validationErrors: ValidationErrors
   loading?: boolean
 }
@@ -40,21 +41,36 @@ const SecuritySettingsTab: React.FC<SecuritySettingsTabProps> = ({
   const { t } = useTranslation()
 
   // 获取设置值的辅助函数
-  const getSettingValue = (key: string) => {
+  const getSettingValue = (key: string): string => {
     const setting = settings.find(s => s.key === key)
-    return setting?.value || setting?.defaultValue || ''
+    const value = setting?.value ?? setting?.defaultValue
+    if (typeof value === 'string') {
+      return value
+    }
+    if (typeof value === 'boolean' || typeof value === 'number') {
+      return String(value)
+    }
+    return ''
   }
 
   // 获取布尔值设置
   const getBooleanValue = (key: string) => {
-    const value = getSettingValue(key) as any
-    return value === 'true' || value === true
+    const setting = settings.find(s => s.key === key)
+    const value = setting?.value ?? setting?.defaultValue
+    if (typeof value === 'boolean') {
+      return value
+    }
+    return value === 'true'
   }
 
   // 获取数字值设置
   const getNumberValue = (key: string) => {
     const value = getSettingValue(key)
-    return value ? parseInt(value, 10) : undefined
+    if (value.trim().length === 0) {
+      return undefined
+    }
+    const parsed = parseInt(value, 10)
+    return Number.isNaN(parsed) ? undefined : parsed
   }
 
   // 获取数组设置

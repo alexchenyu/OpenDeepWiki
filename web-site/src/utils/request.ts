@@ -1,48 +1,37 @@
-// 请求工具封装，基于现有的 fetch service
-import { fetchService } from '@/services/fetch'
+import { fetchService, type FetchOptions } from '@/services/fetch'
 
-// 获取认证token
-const getAuthToken = () => {
-  return localStorage.getItem('auth-token') || ''
-}
+type RequestOptions = FetchOptions
 
-// 请求拦截器 - 添加认证头
+const getAuthToken = (): string => localStorage.getItem('auth-token') ?? ''
+
 const requestInterceptor = (headers: HeadersInit = {}): HeadersInit => {
   const token = getAuthToken()
   return {
     ...headers,
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    ...(token ? { Authorization: `Bearer ${token}` } : {})
   }
 }
 
-// 封装请求方法
+const withAuthHeaders = (options?: RequestOptions): RequestOptions => ({
+  ...options,
+  headers: requestInterceptor(options?.headers)
+})
+
 export const request = {
-  get: async <T = any>(url: string, options?: { params?: Record<string, any>; [key: string]: any }): Promise<T> => {
-    return fetchService.get<T>(url, {
-      ...options,
-      headers: requestInterceptor(options?.headers)
-    })
+  async get<T = unknown>(url: string, options?: RequestOptions): Promise<T> {
+    return fetchService.get<T>(url, withAuthHeaders(options))
   },
 
-  post: async <T = any>(url: string, data?: any, options?: { params?: Record<string, any>; [key: string]: any }): Promise<T> => {
-    return fetchService.post<T>(url, data, {
-      ...options,
-      headers: requestInterceptor(options?.headers)
-    })
+  async post<T = unknown, D = unknown>(url: string, data?: D, options?: RequestOptions): Promise<T> {
+    return fetchService.post<T, D>(url, data, withAuthHeaders(options))
   },
 
-  put: async <T = any>(url: string, data?: any, options?: { params?: Record<string, any>; [key: string]: any }): Promise<T> => {
-    return fetchService.put<T>(url, data, {
-      ...options,
-      headers: requestInterceptor(options?.headers)
-    })
+  async put<T = unknown, D = unknown>(url: string, data?: D, options?: RequestOptions): Promise<T> {
+    return fetchService.put<T, D>(url, data, withAuthHeaders(options))
   },
 
-  delete: async <T = any>(url: string, options?: { params?: Record<string, any>; [key: string]: any }): Promise<T> => {
-    return fetchService.delete<T>(url, {
-      ...options,
-      headers: requestInterceptor(options?.headers)
-    })
+  async delete<T = unknown>(url: string, options?: RequestOptions): Promise<T> {
+    return fetchService.delete<T>(url, withAuthHeaders(options))
   }
 }
 

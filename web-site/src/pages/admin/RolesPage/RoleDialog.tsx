@@ -16,7 +16,14 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { toast } from 'sonner'
+import { getErrorMessage } from '@/lib/errors'
 import { roleService, type RoleInfo, type CreateRoleDto, type UpdateRoleDto } from '@/services/admin.service'
+
+interface RoleFormData {
+  name: string
+  description: string
+  isActive: boolean
+}
 
 interface RoleDialogProps {
   open: boolean
@@ -33,11 +40,7 @@ const RoleDialog: React.FC<RoleDialogProps> = ({
 }) => {
   const { t } = useTranslation()
   const [loading, setLoading] = useState(false)
-  const [formData, setFormData] = useState<{
-    name: string
-    description: string
-    isActive: boolean
-  }>({
+  const [formData, setFormData] = useState<RoleFormData>({
     name: '',
     description: '',
     isActive: true
@@ -66,7 +69,10 @@ const RoleDialog: React.FC<RoleDialogProps> = ({
   }, [open, role])
 
   // 表单字段变化处理
-  const handleFieldChange = (field: string, value: string | boolean) => {
+  const handleFieldChange = <K extends keyof RoleFormData>(
+    field: K,
+    value: RoleFormData[K]
+  ) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -142,9 +148,10 @@ const RoleDialog: React.FC<RoleDialogProps> = ({
 
       onSuccess?.(result)
       onOpenChange(false)
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, '操作失败，请稍后重试')
       toast.error(isEditMode ? '更新失败' : '创建失败', {
-        description: error?.message || '操作失败，请稍后重试'
+        description: message
       })
     } finally {
       setLoading(false)

@@ -1,6 +1,6 @@
 // 仓库详情页专用布局
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Outlet, useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
@@ -11,17 +11,16 @@ import { useRepositoryDetailStore } from '@/stores/repositoryDetail.store'
 import { warehouseService } from '@/services/warehouse.service'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/useAuth'
+import type { DocumentNode } from '@/components/repository/DocumentTree'
 import {
   Home,
   Download,
-  ChevronLeft,
   Menu,
   X,
   Search,
   PanelLeftOpen,
   ChevronRight,
   Hash,
-  Book,
   AlertCircle
 } from 'lucide-react'
 
@@ -62,7 +61,7 @@ export const RepositoryLayout: React.FC<RepositoryLayoutProps> = ({ children }) 
   const [isDownloading, setIsDownloading] = useState(false)
 
   // 处理节点选择
-  const handleNodeSelect = (node: any) => {
+  const handleNodeSelect = (node: DocumentNode) => {
     selectNode(node)
     // 导航到文档页面
     if (node.type === 'file' && owner && name) {
@@ -95,24 +94,30 @@ export const RepositoryLayout: React.FC<RepositoryLayoutProps> = ({ children }) 
     try {
       await warehouseService.exportMarkdownZip(repository.id)
       toast.success(t('repository.layout.downloadSuccess'))
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Download failed:', error)
-      toast.error(error.message || t('repository.layout.downloadFailed'))
+      const message =
+        typeof error === 'string'
+          ? error
+          : (error && typeof error === 'object' && 'message' in error && typeof (error as { message?: string }).message === 'string'
+            ? (error as { message?: string }).message
+            : t('repository.layout.downloadFailed'))
+      toast.error(message)
     } finally {
       setIsDownloading(false)
     }
   }
 
   // 检查是否为固定路由（不需要加载文档数据）
-  const isFixedRoute = () => {
+  const isFixedRoute = useCallback(() => {
     const currentPath = location.pathname
-    const basePath = `/${owner}/${name}`
+    const basePath = `/${owner ?? ''}/${name ?? ''}`
     const subPath = currentPath.replace(basePath, '').replace(/^\//, '')
 
     // 固定路由列表
     const fixedRoutes = ['mindmap']
     return fixedRoutes.includes(subPath)
-  }
+  }, [location.pathname, owner, name])
 
   // 初始化
   useEffect(() => {
@@ -128,7 +133,7 @@ export const RepositoryLayout: React.FC<RepositoryLayoutProps> = ({ children }) 
       // 组件卸载时重置store
       reset()
     }
-  }, [owner, name])
+  }, [owner, name, clearError, fetchBranches, reset, setRepository])
 
   // 自动跳转到第一个文档
   useEffect(() => {
@@ -150,7 +155,7 @@ export const RepositoryLayout: React.FC<RepositoryLayoutProps> = ({ children }) 
       setHasNavigatedToFirstDoc(true)
       navigate(pathWithBranch, { replace: true })
     }
-  }, [owner, name, location.pathname, documentNodes, selectedNode, loadingDocuments, hasNavigatedToFirstDoc, selectedBranch, navigate])
+  }, [owner, name, location.pathname, documentNodes, selectedNode, loadingDocuments, hasNavigatedToFirstDoc, selectedBranch, navigate, isFixedRoute])
 
   // 重置自动跳转状态当仓库或分支改变时
   useEffect(() => {
@@ -166,7 +171,7 @@ export const RepositoryLayout: React.FC<RepositoryLayoutProps> = ({ children }) 
     }
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
-  }, [])
+  }, [setMobileMenuOpen])
 
   return (
     <div className="min-h-screen bg-background">

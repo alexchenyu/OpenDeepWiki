@@ -25,6 +25,7 @@ import {
   Loader2
 } from 'lucide-react'
 import { userService } from '@/services/userService'
+import { getErrorMessage } from '@/lib/errors'
 
 export const ProfileInfo: React.FC = () => {
   const { user, } = useAuth()
@@ -46,7 +47,10 @@ export const ProfileInfo: React.FC = () => {
   })
 
   // 处理表单输入变化
-  const handleInputChange = (field: string, value: string) => {
+  const handleInputChange = <K extends keyof typeof formData>(
+    field: K,
+    value: (typeof formData)[K]
+  ) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -61,8 +65,9 @@ export const ProfileInfo: React.FC = () => {
       // await refreshUser()
       setIsEditing(false)
       sonnerToast.success('保存成功', { description: '您的个人资料已更新' })
-    } catch (error: any) {
-      sonnerToast.error('保存失败', { description: error.message || '更新个人资料时出错' })
+    } catch (error) {
+      const message = getErrorMessage(error, '更新个人资料时出错')
+      sonnerToast.error('保存失败', { description: message })
     } finally {
       setLoading(false)
     }
@@ -107,8 +112,9 @@ export const ProfileInfo: React.FC = () => {
       await userService.uploadAvatar(formData)
 
       sonnerToast.success('上传成功', { description: '头像已更新' })
-    } catch (error: any) {
-      sonnerToast.error('上传失败', { description: error.message || '上传头像时出错' })
+    } catch (error) {
+      const message = getErrorMessage(error, '上传头像时出错')
+      sonnerToast.error('上传失败', { description: message })
     } finally {
       setUploadingAvatar(false)
       if (fileInputRef.current) {
@@ -123,8 +129,9 @@ export const ProfileInfo: React.FC = () => {
       await userService.deleteAvatar()
       setShowDeleteDialog(false)
       sonnerToast.success('删除成功', { description: '头像已删除' })
-    } catch (error: any) {
-      sonnerToast.error('删除失败', { description: error.message || '删除头像时出错' })
+    } catch (error) {
+      const message = getErrorMessage(error, '删除头像时出错')
+      sonnerToast.error('删除失败', { description: message })
     }
   }
 

@@ -9,6 +9,8 @@ import {
 import { useTranslation } from 'react-i18next'
 import { systemSettingsService } from '@/services/admin.service'
 import type { SystemSetting, ValidationErrors, APITestParams } from '@/types/systemSettings'
+import { getErrorMessage } from '@/lib/errors'
+import type { SettingUpdateValue } from '../types'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,7 +32,7 @@ import {
 
 interface AISettingsTabProps {
   settings: SystemSetting[]
-  onUpdate: (key: string, value: any) => void
+  onUpdate: (key: string, value: SettingUpdateValue) => void
   validationErrors: ValidationErrors
   loading?: boolean
 }
@@ -47,27 +49,52 @@ const AISettingsTab: React.FC<AISettingsTabProps> = ({
   const [testing, setTesting] = useState(false)
 
   // 获取设置值的辅助函数
-  const getSettingValue = (key: string) => {
+  const getSettingValue = (key: string): string | boolean | undefined => {
     const setting = settings.find(s => s.key === key)
-    return setting?.value || setting?.defaultValue || ''
+    if (!setting) return undefined
+    const rawValue = setting.value ?? setting.defaultValue
+    if (typeof rawValue === 'string' || typeof rawValue === 'boolean') {
+      return rawValue
+    }
+    if (rawValue === null || rawValue === undefined) {
+      return undefined
+    }
+    return String(rawValue)
   }
 
   // 获取布尔值设置
   const getBooleanValue = (key: string) => {
-    const value = getSettingValue(key) as any
-    return value === 'true' || value === true 
+    const value = getSettingValue(key)
+    if (typeof value === 'boolean') {
+      return value
+    }
+    return value === 'true'
   }
 
   // 获取数字值设置
   const getNumberValue = (key: string) => {
     const value = getSettingValue(key)
-    return value ? parseFloat(value) : undefined
+    if (typeof value === 'number') {
+      return value
+    }
+    if (typeof value === 'string' && value.trim().length > 0) {
+      const parsed = Number(value)
+      return Number.isNaN(parsed) ? undefined : parsed
+    }
+    return undefined
   }
 
   // 获取整数值设置
   const getIntValue = (key: string) => {
     const value = getSettingValue(key)
-    return value ? parseInt(value, 10) : undefined
+    if (typeof value === 'number') {
+      return Math.trunc(value)
+    }
+    if (typeof value === 'string' && value.trim().length > 0) {
+      const parsed = parseInt(value, 10)
+      return Number.isNaN(parsed) ? undefined : parsed
+    }
+    return undefined
   }
 
   // 测试AI API连接
@@ -93,23 +120,24 @@ const AISettingsTab: React.FC<AISettingsTabProps> = ({
         model
       }
 
-      const result = await systemSettingsService.testAISettings(params) as any
+      const result = await systemSettingsService.testAISettings(params)
 
-      if (result.success) {
+      if (result?.success) {
         toast({
           title: t('settings.ai.testSuccess'),
         })
         setTestModalVisible(false)
       } else {
         toast({
-          title: result.message || t('settings.ai.testFailed'),
+          title: result?.message || t('settings.ai.testFailed'),
           variant: 'destructive',
         })
       }
     } catch (error) {
+      const message = getErrorMessage(error, t('settings.ai.testFailed'))
       console.error('AI API test failed:', error)
       toast({
-        title: t('settings.ai.testFailed'),
+        title: message,
         variant: 'destructive',
       })
     } finally {

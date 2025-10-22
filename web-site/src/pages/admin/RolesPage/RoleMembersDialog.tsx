@@ -1,6 +1,6 @@
 // 角色成员查看对话框组件
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -34,6 +34,7 @@ import {
   Shield
 } from 'lucide-react'
 import { roleService, type RoleInfo, type UserInfo } from '@/services/admin.service'
+import { getErrorMessage } from '@/lib/errors'
 
 interface RoleMembersDialogProps {
   open: boolean
@@ -52,7 +53,7 @@ const RoleMembersDialog: React.FC<RoleMembersDialogProps> = ({
   const [filteredMembers, setFilteredMembers] = useState<UserInfo[]>([])
 
   // 加载角色成员
-  const loadRoleMembers = async () => {
+  const loadRoleMembers = useCallback(async () => {
     if (!role?.id) return
 
     setLoading(true)
@@ -61,22 +62,23 @@ const RoleMembersDialog: React.FC<RoleMembersDialogProps> = ({
       const memberList = roleDetail.users || []
       setMembers(memberList)
       setFilteredMembers(memberList)
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, '无法加载角色成员')
       toast.error('加载失败', {
-        description: error?.message || '无法加载角色成员'
+        description: message
       })
     } finally {
       setLoading(false)
     }
-  }
+  }, [role?.id])
 
   // 当对话框打开时加载数据
   useEffect(() => {
     if (open && role) {
-      loadRoleMembers()
+      void loadRoleMembers()
       setSearchQuery('')
     }
-  }, [open, role])
+  }, [open, role, loadRoleMembers])
 
   // 搜索过滤
   useEffect(() => {
@@ -124,10 +126,11 @@ const RoleMembersDialog: React.FC<RoleMembersDialogProps> = ({
       })
 
       // 重新加载成员列表
-      loadRoleMembers()
-    } catch (error: any) {
+      void loadRoleMembers()
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, '无法移除用户')
       toast.error('移除失败', {
-        description: error?.message || '无法移除用户'
+        description: message
       })
     }
   }

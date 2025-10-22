@@ -1,6 +1,6 @@
 // 角色权限配置对话框组件
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -30,6 +30,7 @@ import {
 } from 'lucide-react'
 import type { RoleInfo } from '@/services/admin.service'
 import { request } from '@/utils/request'
+import { getErrorMessage } from '@/lib/errors'
 
 // 权限树节点数据结构
 interface WarehousePermissionTreeNode {
@@ -76,7 +77,7 @@ const RolePermissionDialog: React.FC<RolePermissionDialogProps> = ({
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
 
   // 加载权限树数据
-  const loadPermissionTree = async () => {
+  const loadPermissionTree = useCallback(async () => {
     if (!role?.id) return
 
     setLoading(true)
@@ -85,26 +86,30 @@ const RolePermissionDialog: React.FC<RolePermissionDialogProps> = ({
         `/api/Permission/WarehousePermissionTree?roleId=${role.id}`
       )
 
-      setPermissionTree(tree || [])
+      const nodes = tree || []
+      setPermissionTree(nodes)
 
       // 默认展开所有组织节点
-      const orgNodes = tree?.filter(node => node.type === 'organization').map(node => node.id) || []
+      const orgNodes = nodes
+        .filter(node => node.type === 'organization')
+        .map(node => node.id)
       setExpandedNodes(new Set(orgNodes))
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, '无法加载权限配置')
       toast.error('加载失败', {
-        description: error?.message || '无法加载权限配置'
+        description: message
       })
     } finally {
       setLoading(false)
     }
-  }
+  }, [role?.id])
 
   // 当对话框打开时加载数据
   useEffect(() => {
     if (open && role) {
-      loadPermissionTree()
+      void loadPermissionTree()
     }
-  }, [open, role])
+  }, [open, role, loadPermissionTree])
 
   // 切换节点展开状态
   const toggleNodeExpansion = (nodeId: string) => {
@@ -190,26 +195,28 @@ const RolePermissionDialog: React.FC<RolePermissionDialogProps> = ({
       })
     }
 
-    setPermissionTree(updateNodePermission(permissionTree))
+    setPermissionTree(prev => updateNodePermission(prev))
   }
 
   // 处理节点选中状态变化
   const handleNodeSelectionChange = (node: WarehousePermissionTreeNode, isSelected: boolean) => {
     if (node.type === 'organization') {
       // 组织节点：批量设置子仓库
-      const updateOrgPermissions = (tree: WarehousePermissionTreeNode[]): WarehousePermissionTreeNode[] => {
-        return tree.map(treeNode => {
+      const updateOrgPermissions = (tree: WarehousePermissionTreeNode[]): WarehousePermissionTreeNode[] =>
+        tree.map(treeNode => {
           if (treeNode.id === node.id) {
             const updatedChildren = treeNode.children?.map(child => ({
               ...child,
               isSelected,
-              permission: isSelected ? {
-                warehouseId: child.id,
-                isReadOnly: true,
-                isWrite: false,
-                isDelete: false
-              } : undefined
-            })) || []
+              permission: isSelected
+                ? {
+                    warehouseId: child.id,
+                    isReadOnly: true,
+                    isWrite: false,
+                    isDelete: false
+                  }
+                : undefined
+            })) ?? []
 
             return {
               ...treeNode,
@@ -219,12 +226,11 @@ const RolePermissionDialog: React.FC<RolePermissionDialogProps> = ({
           }
           return treeNode
         })
-      }
 
-      setPermissionTree(updateOrgPermissions(permissionTree))
+      setPermissionTree(prev => updateOrgPermissions(prev))
     } else {
       // 仓库节点：单独设置
-      setPermissionTree(updateNodeSelection(permissionTree, node.id, isSelected))
+      setPermissionTree(prev => updateNodeSelection(prev, node.id, isSelected))
     }
   }
 
@@ -264,9 +270,10 @@ const RolePermissionDialog: React.FC<RolePermissionDialogProps> = ({
 
       onSuccess?.()
       onOpenChange(false)
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, '无法保存权限配置')
       toast.error('保存失败', {
-        description: error?.message || '无法保存权限配置'
+        description: message
       })
     } finally {
       setSaving(false)
@@ -295,21 +302,6 @@ const RolePermissionDialog: React.FC<RolePermissionDialogProps> = ({
             checked={permission.isWrite}
             onCheckedChange={(checked) => updatePermission(permission.warehouseId, 'isWrite', checked)}
           />
-          <Label className="text-xs flex items-center gap-1">
-            <Edit className="h-3 w-3" />
-            编辑
-          </Label>
-        </div>
-
-        <div className="flex items-center space-x-1">
-          <Switch
-            checked={permission.isDelete}
-            onCheckedChange={(checked) => updatePermission(permission.warehouseId, 'isDelete', checked)}
-          />
-          <Label className="text-xs flex items-center gap-1">
-            <Trash2 className="h-3 w-3" />
-            删除
-          </Label>
           <Label className="text-xs flex items-center gap-1">
             <Edit className="h-3 w-3" />
             编辑

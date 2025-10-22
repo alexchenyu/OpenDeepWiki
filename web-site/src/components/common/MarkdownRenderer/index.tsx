@@ -24,115 +24,32 @@ const generateHeadingId = (text: string): string => {
     .replace(/^-|-$/g, '')
 }
 
-// 常用语言映射，确保语法高亮正常工作
-const languageMap: Record<string, string> = {
-  'js': 'javascript',
-  'ts': 'typescript',
-  'jsx': 'javascript',
-  'tsx': 'typescript',
-  'py': 'python',
-  'rb': 'ruby',
-  'go': 'go',
-  'rust': 'rust',
-  'rs': 'rust',
-  'cpp': 'cpp',
-  'c++': 'cpp',
-  'c': 'c',
-  'java': 'java',
-  'kt': 'kotlin',
-  'php': 'php',
-  'cs': 'csharp',
-  'csharp': 'csharp',
-  'sh': 'bash',
-  'bash': 'bash',
-  'zsh': 'bash',
-  'powershell': 'powershell',
-  'ps1': 'powershell',
-  'sql': 'sql',
-  'html': 'html',
-  'css': 'css',
-  'scss': 'scss',
-  'sass': 'sass',
-  'less': 'less',
-  'json': 'json',
-  'xml': 'xml',
-  'yaml': 'yaml',
-  'yml': 'yaml',
-  'toml': 'toml',
-  'dockerfile': 'dockerfile',
-  'docker': 'dockerfile',
-  'makefile': 'makefile',
-  'make': 'makefile',
-  'vim': 'vim',
-  'lua': 'lua',
-  'perl': 'perl',
-  'r': 'r',
-  'swift': 'swift',
-  'dart': 'dart',
-  'scala': 'scala',
-  'clojure': 'clojure',
-  'haskell': 'haskell',
-  'elixir': 'elixir',
-  'erlang': 'erlang',
-  'fsharp': 'fsharp',
-  'ocaml': 'ocaml',
-  'julia': 'julia',
-  'matlab': 'matlab',
-  'latex': 'latex',
-  'tex': 'latex',
-  'md': 'markdown',
-  'markdown': 'markdown'
-}
-
-const MermaidBlock = lazy(() => import('../MermaidBlock'))
 const MermaidEnhanced = lazy(() => import('../MermaidBlock/MermaidEnhanced'))
 
-// 脚注悬停卡片组件
-const FootnoteHoverCard = ({
-  footnoteId,
-  content,
-  position,
-  isVisible
-}: {
-  footnoteId: string
-  content: string
-  position: { x: number, y: number }
-  isVisible: boolean
-}) => {
-  if (!isVisible || !content) return null
+type FootnoteElement = HTMLElement & { _footnoteCleanup?: () => void }
 
-  return (
-    <div
-      className="fixed z-[9999] pointer-events-none"
-      style={{
-        left: `${position.x}px`,
-        top: `${position.y - 10}px`,
-        transform: 'translateX(-50%) translateY(-100%)'
-      }}
-    >
-      <div className="bg-popover border border-border rounded-lg shadow-xl p-4 max-w-md w-max animate-in fade-in-0 zoom-in-95 duration-200">
-        <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border/50">
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-primary bg-primary/10 rounded-full border border-primary/20">
-              {footnoteId}
-            </span>
-            <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            <span className="font-medium text-foreground text-sm">代码文件</span>
-          </div>
-        </div>
-        <div className="text-sm text-muted-foreground leading-relaxed max-h-48 overflow-y-auto">
-          <div className="whitespace-pre-wrap font-mono text-xs bg-muted/50 p-3 rounded border">
-            {content}
-          </div>
-        </div>
-        <div className="mt-3 pt-2 border-t border-border/30 text-xs text-muted-foreground">
-          点击脚注查看完整信息
-        </div>
-      </div>
-    </div>
-  )
+// Helper function to extract text content from React elements
+const extractTextFromElement = (element: React.ReactNode): string => {
+  if (typeof element === 'string') {
+    return element
+  }
+  if (typeof element === 'number') {
+    return String(element)
+  }
+  if (!React.isValidElement(element)) {
+    return ''
+  }
+
+  const children = element.props.children
+  if (!children) {
+    return ''
+  }
+
+  if (Array.isArray(children)) {
+    return children.map(extractTextFromElement).join('')
+  }
+
+  return extractTextFromElement(children)
 }
 
 interface MarkdownRendererProps {
@@ -301,9 +218,10 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
       )
 
       const textNodes: Text[] = []
-      let node
-      while (node = walker.nextNode()) {
-        textNodes.push(node as Text)
+      let currentNode = walker.nextNode()
+      while (currentNode) {
+        textNodes.push(currentNode as Text)
+        currentNode = walker.nextNode()
       }
 
       // 处理包含脚注的文本节点
@@ -360,7 +278,7 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
       })
 
       // 原有的sup元素检测（限制在 markdown 容器内）
-      const elements = markdownContainer.querySelectorAll('sup:not([data-footnote-processed])')
+      const elements = markdownContainer.querySelectorAll<HTMLElement>('sup:not([data-footnote-processed])')
       elements.forEach((element) => {
         const text = element.textContent || ''
         const footnoteMatch = text.match(/\^?(\d+)/)
@@ -371,7 +289,8 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
 
           element.setAttribute('data-footnote-processed', 'true')
 
-          ;(element as HTMLElement).style.cssText = `
+          const supElement = element as FootnoteElement
+          supElement.style.cssText = `
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -397,12 +316,12 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
             handleMouseLeave()
           }
 
-          element.addEventListener('mouseenter', handleEnter)
-          element.addEventListener('mouseleave', handleLeave)
+          supElement.addEventListener('mouseenter', handleEnter)
+          supElement.addEventListener('mouseleave', handleLeave)
 
-          ;(element as any)._footnoteCleanup = () => {
-            element.removeEventListener('mouseenter', handleEnter)
-            element.removeEventListener('mouseleave', handleLeave)
+          supElement._footnoteCleanup = () => {
+            supElement.removeEventListener('mouseenter', handleEnter)
+            supElement.removeEventListener('mouseleave', handleLeave)
           }
         }
       })
@@ -413,11 +332,10 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
       const markdownContainer = document.querySelector('.markdown-content')
       if (!markdownContainer) return
 
-      const elements = markdownContainer.querySelectorAll('[data-footnote-processed]')
-      elements.forEach((element: any) => {
-        if (element._footnoteCleanup) {
-          element._footnoteCleanup()
-        }
+      const processedElements = markdownContainer.querySelectorAll<HTMLElement>('[data-footnote-processed]')
+      processedElements.forEach((element) => {
+        const supElement = element as FootnoteElement
+        supElement._footnoteCleanup?.()
       })
     }
 
@@ -464,12 +382,9 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[
           rehypeRaw,
-          rehypeKatex,
-          [rehypeHighlight, {
-            subset: false,
-            ignoreMissing: true,
-            detect: true
-          }]
+          rehypeKatex
+          // REMOVED rehypeHighlight to prevent it from processing Mermaid code blocks
+          // Syntax highlighting will be handled by our custom code component if needed
         ]}
         components={{
           // 自定义标题渲染，添加锚点
@@ -614,12 +529,28 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
           },
           // 自定义代码组件
           code: ({ children, className, ...props }) => {
-            const code = String(children).replace(/\n$/, '')
+            // First, try to extract from children
+            let code = extractTextFromElement(children).replace(/\n$/, '')
+
+            // If code is empty and we have a data-value attribute (from rehype-highlight),
+            // try to extract text content directly
+            if (!code && props && 'data-highlighted' in props) {
+              // rehype-highlight has processed this, try to get text from the DOM structure
+              code = extractTextFromElement(children) || ''
+            }
+
+            // Fallback: if still empty, try to stringify children and extract text
+            if (!code && typeof children === 'string') {
+              code = children
+            } else if (!code && React.isValidElement(children) && children.props && typeof children.props.children === 'string') {
+              code = children.props.children
+            }
+
             const match = className?.match(/^language-(.+)/)
             const rawLanguage = match?.[1]
             const isInline = !className
 
-            console.log('Code component:', { code: code.substring(0, 50), className, rawLanguage, isInline })
+            console.log('Code component:', { code: code.substring(0, 50), className, rawLanguage, isInline, childrenType: typeof children })
 
             // 更全面的 Mermaid 检测
             const trimmedCode = code.trim()
@@ -661,44 +592,39 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
           },
           // 自定义 pre 组件，添加工具栏
           pre: ({ children, ...props }) => {
-            // 提取代码内容用于复制
-            const codeElement = children as any
+            const childArray = React.Children.toArray(children)
+            const firstChild = childArray[0]
+
             let code = ''
             let language = 'text'
 
-            // Extract code content more robustly
-            if (codeElement?.props?.children) {
-              if (typeof codeElement.props.children === 'string') {
-                code = codeElement.props.children
-              } else if (Array.isArray(codeElement.props.children)) {
-                code = codeElement.props.children.join('')
-              } else {
-                code = String(codeElement.props.children)
+            if (React.isValidElement(firstChild)) {
+              const { children: codeChildren, className: codeClassName } = firstChild.props as {
+                children?: React.ReactNode
+                className?: string | string[]
+              }
+
+              if (typeof codeChildren === 'string') {
+                code = codeChildren
+              } else if (Array.isArray(codeChildren)) {
+                code = codeChildren.map(extractTextFromElement).join('')
+              } else if (codeChildren !== undefined && codeChildren !== null) {
+                code = extractTextFromElement(codeChildren)
+              }
+
+              if (typeof codeClassName === 'string') {
+                const match = codeClassName.match(/language-(\w+)/)
+                if (match) {
+                  language = match[1]
+                }
+              } else if (Array.isArray(codeClassName)) {
+                const match = codeClassName.find((cls) => cls.startsWith('language-'))
+                if (match) {
+                  language = match.replace('language-', '')
+                }
               }
             }
 
-            // Extract language from className
-            const className = codeElement?.props?.className
-            if (className) {
-              const match = Array.isArray(className)
-                ? className.find((cls: string) => cls.startsWith('language-'))
-                : String(className).match(/language-(\w+)/)
-
-              if (match) {
-                language = Array.isArray(className)
-                  ? match.replace('language-', '')
-                  : match[1]
-              }
-            }
-
-            console.log('Pre component:', {
-              code: code.substring(0, 50),
-              language,
-              className,
-              codeElementProps: codeElement?.props
-            })
-
-            // 检查是否是 Mermaid 代码块 - 更robust的检测
             const trimmedCode = code.trim()
             const mermaidKeywords = [
               'graph', 'flowchart', 'sequenceDiagram', 'gitGraph', 'pie', 'journey',
@@ -706,16 +632,17 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
               'timeline', 'quadrantChart', 'requirement', 'C4Context', 'xychart-beta'
             ]
 
-            const isMermaid = language === 'mermaid' ||
-                             language === 'mmd' ||
-                             mermaidKeywords.some(keyword =>
-                               trimmedCode.startsWith(keyword + ' ') ||
-                               trimmedCode.startsWith(keyword + '\n') ||
-                               trimmedCode === keyword
-                             )
+            const isMermaid =
+              language === 'mermaid' ||
+              language === 'mmd' ||
+              mermaidKeywords.some(
+                (keyword) =>
+                  trimmedCode.startsWith(keyword + ' ') ||
+                  trimmedCode.startsWith(keyword + '\n') ||
+                  trimmedCode === keyword
+              )
 
             if (isMermaid) {
-              console.log('Mermaid code detected in pre:', code.substring(0, 100))
               return (
                 <Suspense fallback={<div className="flex justify-center p-8"><span className="text-muted-foreground">加载图表...</span></div>}>
                   <MermaidEnhanced code={code} />
@@ -724,25 +651,23 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
             }
 
             return (
-              <div className="relative group my-1">
-                <div className="flex items-center justify-between bg-muted/40 px-4 py-2 rounded-t-lg border border-b-0 border-border/50">
-                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    {language}
-                  </span>
+              <div className="relative group rounded-xl border border-border/60 bg-muted/30 p-3 shadow-sm transition-all duration-200 hover:border-border/80">
+                <div className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center gap-2">
                   <button
+                    type="button"
+                    className="inline-flex items-center rounded border border-border/60 bg-background/90 px-2 py-1 text-xs text-muted-foreground hover:bg-background hover:text-foreground transition-all duration-200"
                     onClick={() => {
-                      navigator.clipboard.writeText(String(code))
+                      navigator.clipboard.writeText(code)
                     }}
-                    className="rounded bg-background/80 p-0.5 opacity-70 transition-all hover:bg-background hover:opacity-100"
-                    title="复制代码"
                   >
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
+                    复制
                   </button>
+                  <span className="text-[11px] font-medium text-muted-foreground bg-background/80 px-2 py-1 rounded border border-border/50">
+                    {language.toUpperCase()}
+                  </span>
                 </div>
                 <pre
-                  className="!mt-0 !mb-0 !rounded-t-none rounded-b-lg border border-t-0 border-border/50 shadow-sm bg-muted/60 dark:bg-muted/80 p-2 overflow-x-auto"
+                  className="whitespace-pre-wrap break-words rounded-lg bg-background/80 backdrop-blur-sm border border-border/50 shadow-inner overflow-x-auto p-4 text-sm leading-relaxed text-muted-foreground"
                   {...props}
                 >
                   {children}
@@ -905,15 +830,16 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
           sup: ({ children, ...props }) => {
             // 简化脚注检测逻辑
             const childArray = React.Children.toArray(children)
-            const firstChild = childArray[0] as any
+            const firstChild = childArray[0]
 
             // 检查是否是脚注引用
             let footnoteId = ''
             let isFootnote = false
 
             // 情况1: 包含链接元素
-            if (firstChild?.props?.href) {
-              const href = firstChild.props.href
+            if (React.isValidElement(firstChild)) {
+              const elementProps = firstChild.props as Record<string, unknown>
+              const href = typeof elementProps.href === 'string' ? elementProps.href : undefined
               if (href.includes('#fn') || href.includes('footnote')) {
                 footnoteId = href.replace(/#fn-?ref?-?/, '') || href.match(/\d+/)?.[0] || ''
                 isFootnote = true

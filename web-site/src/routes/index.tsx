@@ -1,4 +1,4 @@
-
+/* eslint-disable react-refresh/only-export-components */
 import { lazy, Suspense } from 'react'
 import { Loader2 } from 'lucide-react'
 
@@ -13,6 +13,7 @@ const RepositoryLayout = lazy(() => import('@/components/layout/RepositoryLayout
 const RepositoryDetailPage = lazy(() => import('@/pages/repository/RepositoryDetailPage/index'))
 const DocumentPage = lazy(() => import('@/pages/repository/DocumentPage/index'))
 const MindMapPage = lazy(() => import('@/pages/repository/MindMapPage/index'))
+const MermaidPlaywrightTestPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev/MermaidPlaywrightTest')) : null
 
 // 管理员控制台组件
 const AdminLayout = lazy(() => import('@/components/layout/AdminLayout/index'))
@@ -172,5 +173,16 @@ const routes = [
     ]
   },
 ]
+
+if (import.meta.env.DEV && MermaidPlaywrightTestPage) {
+  routes.push({
+    path: "/__dev__/mermaid-playwright",
+    element: (
+      <Suspense fallback={<Loading />}>
+        <MermaidPlaywrightTestPage />
+      </Suspense>
+    )
+  })
+}
 
 export default routes

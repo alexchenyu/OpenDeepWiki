@@ -3,18 +3,25 @@
 import { create } from 'zustand'
 import { authService } from '@/services/auth.service'
 import type { LoginResponse, RegisterRequest } from '@/services/auth.service'
-
-interface User {
+import { getErrorMessage } from '@/lib/errors'
+interface AuthUser {
   id: string
-  username: string  // 后端返回的是 name
+  username: string
   email: string
-  role?: string  // 后端返回的是单个 role 字符串
+  role?: string
   avatar?: string
+  bio?: string
+  location?: string
+  website?: string
+  company?: string
+  createdAt?: string
+  updatedAt?: string
+  lastLoginAt?: string
 }
 
 interface AuthState {
   // 状态
-  user: User | null
+  user: AuthUser | null
   token: string | null
   refreshToken: string | null
   isAuthenticated: boolean
@@ -27,7 +34,7 @@ interface AuthState {
   logout: () => void
   refreshTokenHandle: () => Promise<boolean>
   getCurrentUser: () => Promise<void>
-  setUser: (user: User | null) => void
+  setUser: (user: AuthUser | null) => void
   clearError: () => void
   initializeAuth: () => void
 }
@@ -42,11 +49,31 @@ const getStoredRefreshToken = (): string | null => {
   return localStorage.getItem('refreshToken')
 }
 
-const getStoredUser = (): User | null => {
+const getStoredUser = (): AuthUser | null => {
   if (typeof window === 'undefined') return null
   try {
     const userInfo = localStorage.getItem('userInfo')
-    return userInfo ? JSON.parse(userInfo) : null
+    if (!userInfo) {
+      return null
+    }
+    const parsed = JSON.parse(userInfo) as Partial<AuthUser>
+    if (parsed && typeof parsed.id === 'string' && typeof parsed.username === 'string' && typeof parsed.email === 'string') {
+      return {
+        id: parsed.id,
+        username: parsed.username,
+        email: parsed.email,
+        role: parsed.role,
+        avatar: parsed.avatar,
+        bio: parsed.bio,
+        location: parsed.location,
+        website: parsed.website,
+        company: parsed.company,
+        createdAt: parsed.createdAt,
+        updatedAt: parsed.updatedAt,
+        lastLoginAt: parsed.lastLoginAt,
+      }
+    }
+    return null
   } catch {
     return null
   }
@@ -54,15 +81,16 @@ const getStoredUser = (): User | null => {
 
 const storeAuthData = (data: LoginResponse) => {
   if (typeof window === 'undefined') return
-  
+
   if (data.token) {
     localStorage.setItem('userToken', data.token)
   }
   if (data.refreshToken) {
     localStorage.setItem('refreshToken', data.refreshToken)
   }
-  if (data.user) {
-    localStorage.setItem('userInfo', JSON.stringify(data.user))
+  const adaptedUser = mapToUser(data.user)
+  if (adaptedUser) {
+    localStorage.setItem('userInfo', JSON.stringify(adaptedUser))
   }
 }
 
@@ -73,6 +101,17 @@ const clearAuthData = () => {
   localStorage.removeItem('refreshToken')
   localStorage.removeItem('userInfo')
   localStorage.removeItem('redirectPath')
+}
+
+const mapToUser = (user?: LoginResponse['user']): AuthUser | null => {
+  if (!user) return null
+  return {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    role: user.roleName,
+    avatar: user.avatar,
+  }
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -93,15 +132,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       
       if (response.data.success) {
         storeAuthData(response.data)
-        
+
         set({
-          user: response.data.user || null,
+          user: mapToUser(response.data.user),
           token: response.data.token || null,
           refreshToken: response.data.refreshToken || null,
           isAuthenticated: true,
           loading: false,
         })
-        
+
         return true
       } else {
         set({
@@ -110,9 +149,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         })
         return false
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, '登录过程中发生错误')
       set({
-        error: error?.message || '登录过程中发生错误',
+        error: message,
         loading: false,
       })
       return false
@@ -128,15 +168,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       
       if (response.data.success) {
         storeAuthData(response.data)
-        
+
         set({
-          user: response.data.user || null,
+          user: mapToUser(response.data.user),
           token: response.data.token || null,
           refreshToken: response.data.refreshToken || null,
           isAuthenticated: true,
           loading: false,
         })
-        
+
         return true
       } else {
         set({
@@ -145,9 +185,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         })
         return false
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, '注册过程中发生错误')
       set({
-        error: error?.message || '注册过程中发生错误',
+        error: message,
         loading: false,
       })
       return false
@@ -180,9 +221,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       
       if (response.success) {
         storeAuthData(response)
-        
+
         set({
-          user: response.user || null,
+          user: mapToUser(response.user),
           token: response.token || null,
           refreshToken: response.refreshToken || refreshToken,
           isAuthenticated: true,
@@ -193,7 +234,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         get().logout()
         return false
       }
-    } catch (error) {
+    } catch (error: unknown) {
+      console.error('刷新Token失败:', error)
       get().logout()
       return false
     }
@@ -204,10 +246,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!get().isAuthenticated) return
     
     try {
-      const user = await authService.getCurrentUser()
-      if (user) {
-        localStorage.setItem('userInfo', JSON.stringify(user))
-        set({ user })
+      const loginUser = await authService.getCurrentUser()
+      const adapted = mapToUser(loginUser)
+      if (adapted) {
+        localStorage.setItem('userInfo', JSON.stringify(adapted))
+        set({ user: adapted })
       }
     } catch (error) {
       console.error('获取用户信息失败:', error)

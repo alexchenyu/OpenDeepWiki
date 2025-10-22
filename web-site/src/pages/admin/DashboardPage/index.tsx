@@ -22,18 +22,17 @@ import {
   Settings,
   UserPlus,
   FolderPlus,
-  Plus,
   BarChart3,
   Globe
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { statsService } from '@/services/admin.service'
+import { statsService, type ComprehensiveDashboard } from '@/services/admin.service'
 
 const DashboardPage: React.FC = () => {
   const { t } = useTranslation()
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [dashboardData, setDashboardData] = useState<any>(null)
+  const [dashboardData, setDashboardData] = useState<ComprehensiveDashboard | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -50,9 +49,13 @@ const DashboardPage: React.FC = () => {
       const data = await statsService.getComprehensiveDashboard()
       setDashboardData(data)
       setLastUpdated(new Date())
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to fetch dashboard data:', error)
-      setError(error.message || '获取仪表板数据失败')
+      const message =
+        error && typeof error === 'object' && 'message' in error && typeof (error as { message?: string }).message === 'string'
+          ? (error as { message?: string }).message
+          : '获取仪表板数据失败'
+      setError(message)
     } finally {
       setLoading(false)
       setRefreshing(false)

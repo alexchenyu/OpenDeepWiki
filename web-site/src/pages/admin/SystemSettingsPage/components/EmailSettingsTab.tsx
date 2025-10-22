@@ -7,6 +7,8 @@ import {
 import { useTranslation } from 'react-i18next'
 import { systemSettingsService } from '@/services/admin.service'
 import type { SystemSetting, ValidationErrors, EmailTestParams } from '@/types/systemSettings'
+import { getErrorMessage } from '@/lib/errors'
+import type { SettingUpdateValue } from '../types'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -26,7 +28,7 @@ import {
 
 interface EmailSettingsTabProps {
   settings: SystemSetting[]
-  onUpdate: (key: string, value: any) => void
+  onUpdate: (key: string, value: SettingUpdateValue) => void
   validationErrors: ValidationErrors
   loading?: boolean
 }
@@ -46,21 +48,39 @@ const EmailSettingsTab: React.FC<EmailSettingsTabProps> = ({
   const [testBody, setTestBody] = useState('')
 
   // 获取设置值的辅助函数
-  const getSettingValue = (key: string) => {
+  const getSettingValue = (key: string): string => {
     const setting = settings.find(s => s.key === key)
-    return setting?.value || setting?.defaultValue || ''
+    const value = setting?.value ?? setting?.defaultValue
+    if (typeof value === 'string') {
+      return value
+    }
+    if (typeof value === 'boolean' || typeof value === 'number') {
+      return String(value)
+    }
+    return ''
   }
 
   // 获取布尔值设置
   const getBooleanValue = (key: string) => {
-    const value = getSettingValue(key) as any
-    return value === 'true' || value === true
+    const setting = settings.find(s => s.key === key)
+    const value = setting?.value ?? setting?.defaultValue
+    if (typeof value === 'boolean') {
+      return value
+    }
+    return value === 'true'
   }
 
   // 获取数字值设置
   const getNumberValue = (key: string) => {
     const value = getSettingValue(key)
-    return value ? parseInt(value, 10) : undefined
+    if (typeof value === 'number') {
+      return value
+    }
+    if (typeof value === 'string' && value.trim().length > 0) {
+      const parsed = parseInt(value, 10)
+      return Number.isNaN(parsed) ? undefined : parsed
+    }
+    return undefined
   }
 
   // 测试邮件配置
@@ -82,23 +102,24 @@ const EmailSettingsTab: React.FC<EmailSettingsTabProps> = ({
         body: testBody || t('settings.email.defaultTestBody')
       }
 
-      const result = await systemSettingsService.testEmailSettings(params) as any
+      const result = await systemSettingsService.testEmailSettings(params)
 
-      if (result.success) {
+      if (result?.success) {
         toast({
           title: t('settings.email.testSuccess'),
         })
         setTestModalVisible(false)
       } else {
         toast({
-          title: result.message || t('settings.email.testFailed'),
+          title: result?.message || t('settings.email.testFailed'),
           variant: 'destructive',
         })
       }
     } catch (error) {
+      const message = getErrorMessage(error, t('settings.email.testFailed'))
       console.error('Email test failed:', error)
       toast({
-        title: t('settings.email.testFailed'),
+        title: message,
         variant: 'destructive',
       })
     } finally {

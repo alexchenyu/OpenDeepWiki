@@ -160,15 +160,6 @@ export default function TableOfContents({ className, onItemClick }: TableOfConte
     }
   }, [headingSelectors])
 
-  // 防抖函数
-  const debounce = useCallback((func: Function, wait: number) => {
-    let timeout: NodeJS.Timeout
-    return (...args: any[]) => {
-      clearTimeout(timeout)
-      timeout = setTimeout(() => func.apply(null, args), wait)
-    }
-  }, [])
-
   // 更新指示器位置
   const updateIndicatorPosition = useCallback((targetId: string, immediate = false) => {
     if (!tocRef.current || !targetId) {
@@ -206,21 +197,17 @@ export default function TableOfContents({ className, onItemClick }: TableOfConte
     }
   }, [])
 
-  // 防抖的指示器更新
-  const debouncedUpdateIndicator = useCallback(
-    debounce((targetId: string) => updateIndicatorPosition(targetId), 50),
-    [updateIndicatorPosition, debounce]
-  )
-
   // 节流函数 - 优化性能
-  const throttle = useCallback((func: Function, limit: number) => {
-    let inThrottle: boolean
-    let lastResult: any
-    return (...args: any[]) => {
+  const throttle = useCallback(<T extends (...args: unknown[]) => unknown>(func: T, limit: number) => {
+    let inThrottle = false
+    let lastResult: ReturnType<T> | undefined
+    return (...args: Parameters<T>): ReturnType<T> | undefined => {
       if (!inThrottle) {
-        lastResult = func.apply(null, args)
+        lastResult = func(...args)
         inThrottle = true
-        setTimeout(() => inThrottle = false, limit)
+        setTimeout(() => {
+          inThrottle = false
+        }, limit)
       }
       return lastResult
     }

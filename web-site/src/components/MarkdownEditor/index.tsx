@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useEffect } from 'react'
-import { MdEditor, config, } from 'md-editor-rt'
+import React, { useState, useCallback, useMemo } from 'react'
+import { MdEditor, config, type ToolbarNames } from 'md-editor-rt'
 import 'md-editor-rt/lib/style.css'
 import { toast } from 'sonner'
 import { uploadImage } from '@/services/admin.service'
@@ -103,7 +103,7 @@ interface MarkdownEditorProps {
   readOnly?: boolean
   theme?: 'light' | 'dark' | 'auto'
   language?: string
-  toolbarsExclude?: string[]
+  toolbarsExclude?: ToolbarNames[]
   onSave?: (value: string, html: string) => void
   onError?: (error: Error) => void
   autoFocus?: boolean
@@ -136,19 +136,23 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   const { theme: globalTheme } = useTheme()
 
   // 根据全局主题和组件props计算实际主题
-  const actualTheme = React.useMemo(() => {
-    // 如果组件props指定了具体主题，使用props主题
-    if (globalTheme === 'light' || globalTheme === 'dark') {
-      return globalTheme
+  const actualTheme = useMemo(() => {
+    if (theme === 'light' || theme === 'dark') {
+      return theme
     }
 
-    // 如果组件props是auto或未指定，使用全局主题
-    if (globalTheme === 'system') {
-      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    if (theme === 'auto') {
+      if (globalTheme === 'light' || globalTheme === 'dark') {
+        return globalTheme
+      }
+
+      if (globalTheme === 'system') {
+        return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+      }
     }
 
-    return globalTheme === 'light' || globalTheme === 'dark' ? globalTheme : 'light'
-  }, [globalTheme])
+    return 'light'
+  }, [globalTheme, theme])
 
 
   // 处理图片上传
@@ -212,10 +216,10 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
     if (onError) {
       onError(error)
     }
-  }, [maxLength, onError])
+  }, [onError])
 
   // 自定义工具栏配置
-  const toolbars = [
+  const toolbars: ToolbarNames[] = [
     'bold',
     'underline',
     'italic',
@@ -249,8 +253,6 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
     'catalog'
   ].filter(item => !toolbarsExclude.includes(item))
 
-  console.log('MarkdownEditor theme:', actualTheme)
-
   return (
     <div className="markdown-editor-container">
       <MdEditor
@@ -267,7 +269,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
         disabled={uploading}
         maxLength={maxLength}
         showCodeRowNumber={showCodeRowNumber}
-        toolbars={toolbars as any}
+        toolbars={toolbars}
         onUploadImg={handleUploadImg}
         onSave={handleSave}
         onError={handleError}

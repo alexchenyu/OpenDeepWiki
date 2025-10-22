@@ -3,6 +3,6 @@
 // 扩展 Window 接口
 declare global {
   interface Window {
-    i18n: any
+    i18n: typeof import('i18next').default
   }
 }

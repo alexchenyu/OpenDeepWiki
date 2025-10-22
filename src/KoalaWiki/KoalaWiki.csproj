@@ -92,6 +92,9 @@
       <None Update="Prompts\Mem0\CodeSystem.md">
         <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       </None>
+      <None Include="..\..\scripts\mermaid-validator\**" Exclude="..\..\scripts\mermaid-validator\node_modules\**">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
     </ItemGroup>
 
     <ItemGroup>

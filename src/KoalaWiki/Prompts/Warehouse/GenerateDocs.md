@@ -126,7 +126,34 @@ graph TB
    - ✅ CORRECT: `participant "User Service"` or `participant UserService`
    - ❌ WRONG: `participant User Service`
 
-**VALIDATION CHECKLIST** (verify EVERY diagram):
+9. **🚫 ABSOLUTELY FORBIDDEN - NO URLs**: NEVER include URLs in Mermaid diagrams
+   - ❌ FORBIDDEN: `note right: "See http://example.com"`, `A[Check https://docs.example.com]`
+   - ✅ CORRECT: `note right: "See official documentation"`, `A[Check Documentation]`
+   - **Reason**: URLs cause lexical parsing errors and break diagram rendering
+
+10. **🚫 NO Backslashes**: NEVER use backslash characters (\\) in text
+    - ❌ FORBIDDEN: `A[Path\\to\\file]`, `note right: "Run apt\\ninstall"`
+    - ✅ CORRECT: `A[Path to file]`, `note right: "Run apt install"`
+    - **Reason**: Backslashes are escape characters that corrupt Mermaid syntax
+
+11. **📏 Keep Text Concise**: Limit text in notes, labels, and arrows to 60 characters max
+    - ✅ CORRECT: `note right: "Initialize system configuration"`
+    - ❌ WRONG: `note right: "This is a very long explanation about how the system initializes its configuration by reading multiple files..."`
+    - **Reason**: Long text causes layout issues and parsing failures
+
+12. **🧹 Clean Special Characters**: Only use basic punctuation (.,;:!?-) in text
+    - ✅ CORRECT: `A[User Input]`, `note right: "Process data safely"`
+    - ❌ WRONG: `A[User@Input]`, `note right: "Process #data &safely"`
+    - **Reason**: Special characters can confuse the Mermaid parser
+
+13. **🚫 NO Notes After Terminal State**: In stateDiagram-v2, NEVER put notes on the same line as transitions to [*]
+    - ❌ ABSOLUTELY FORBIDDEN: `Running --> [*] : exit note right: "cleanup"` (CAUSES LEXICAL ERROR)
+    - ❌ FORBIDDEN: `State --> [*] note left: "done"`
+    - ✅ CORRECT: `Running --> [*] : exit` (note removed, only keep the transition)
+    - ✅ CORRECT: `Running --> [*]` on one line, then `note right of Running: "cleanup"` on next line
+    - **Reason**: This is the #1 cause of "Lexical error... Unrecognized text" in production
+
+**VALIDATION CHECKLIST** (verify EVERY diagram BEFORE submitting):
 - [ ] All node IDs are alphanumeric with underscores only
 - [ ] Subgraph declarations are on separate lines
 - [ ] Every `end` keyword is alone on its line
@@ -134,6 +161,11 @@ graph TB
 - [ ] All arrows have complete source and target nodes
 - [ ] No variable syntax (`${}`) is used
 - [ ] Labels are clean with no nested brackets or angle brackets
+- [ ] **🚫 ZERO URLs anywhere in the diagram (http://, https://, ftp://)**
+- [ ] **🚫 ZERO backslashes (\\) anywhere in the diagram**
+- [ ] **📏 All text blocks are under 60 characters**
+- [ ] **🧹 Only basic punctuation used (no @#$%^&*)**
+- [ ] **🚫 ZERO notes on same line as --> [*] transitions (stateDiagram only)**
 
 ## Core Components Analysis
 
