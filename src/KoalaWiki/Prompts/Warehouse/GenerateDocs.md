@@ -75,10 +75,18 @@ Create the COMPLETE documentation in ONE comprehensive Docs.Write operation. Thi
 # [Title]
 
 ## Executive Summary
-[500+ words addressing the core purpose, value proposition, and key insights from analysis]
+Write a comprehensive executive summary with at least 500 words that addresses:
+- The core purpose and value proposition of this project
+- Key architectural insights from your analysis
+- Critical technical decisions and their rationale
+- Main challenges and how they were addressed
 
 ## System Architecture
-[1000+ words explaining the overall design, with rationale for architectural decisions]
+Write a detailed architecture explanation with at least 1000 words covering:
+- Overall system design and component organization
+- Architectural patterns and principles applied
+- Rationale for key architectural decisions
+- How components interact and communicate
 
 ### Architecture Overview
 ```mermaid
@@ -171,14 +179,17 @@ graph TB
 
 ### [Component Name]
 #### Purpose and Design Philosophy
-[300+ words on why this component exists and its design principles]
+Write at least 300 words explaining:
+- Why this component exists and what problem it solves
+- The design principles and philosophy behind its implementation
+- How it fits into the overall system architecture
 
 #### Implementation Deep Dive
-[500+ words analyzing the actual implementation]
-- Algorithm complexity: O(n) analysis where applicable
-- Design patterns employed
-- Performance optimizations
-- Trade-offs and decisions
+Write at least 500 words with detailed analysis including:
+- Algorithm complexity with O(n) notation where applicable
+- Specific design patterns employed and why they were chosen
+- Performance optimizations implemented in the code
+- Trade-offs and technical decisions with rationale
 
 #### Component Architecture
 ```mermaid
@@ -191,7 +202,11 @@ classDiagram
 ## Technical Deep Dive
 
 ### Critical Algorithms and Logic
-[800+ words analyzing core algorithms with complexity analysis]
+Write at least 800 words with in-depth analysis of:
+- Core algorithms implemented in the codebase
+- Time and space complexity analysis with O(n) notation
+- Why these specific algorithms were chosen
+- Potential optimizations and alternative approaches
 
 ```mermaid
 sequenceDiagram
@@ -205,7 +220,11 @@ sequenceDiagram
 ```
 
 ### Data Management and State
-[600+ words on data flow, persistence, state management]
+Write at least 600 words covering:
+- Data flow patterns throughout the system
+- Persistence strategies and data storage approaches
+- State management techniques and patterns
+- Data validation and integrity mechanisms
 
 ```mermaid
 graph LR
@@ -216,20 +235,36 @@ graph LR
 ```
 
 ### API Design and Integration
-[500+ words on APIs, contracts, integration patterns]
+Write at least 500 words analyzing:
+- API design patterns and REST/GraphQL conventions used
+- API contracts and interface definitions
+- Integration patterns with external systems
+- Error handling in API layers
 
 ## Implementation Patterns
 
 ### Design Patterns Analysis
-[500+ words identifying and explaining patterns used]
+Write at least 500 words that:
+- Identifies all major design patterns used in the codebase
+- Explains why each pattern was appropriate for its use case
+- Provides specific code examples demonstrating the patterns
+- Discusses alternatives and trade-offs
 
 ### Code Quality Assessment
-[400+ words on maintainability, testability, technical debt]
+Write at least 400 words evaluating:
+- Code maintainability and readability
+- Test coverage and testing strategies
+- Identified technical debt and improvement opportunities
+- Code organization and modularity
 
 ## Performance and Scalability
 
 ### Performance Characteristics
-[500+ words with evidence from code]
+Write at least 500 words with concrete evidence from the code:
+- Performance bottlenecks identified in the implementation
+- Optimization techniques used and their effectiveness
+- Resource usage patterns (memory, CPU, I/O)
+- Performance testing approaches if present
 
 ```mermaid
 stateDiagram-v2
@@ -240,15 +275,27 @@ stateDiagram-v2
 ```
 
 ### Scalability Analysis
-[400+ words on scaling strategies]
+Write at least 400 words discussing:
+- Current scalability limitations and bottlenecks
+- Horizontal vs vertical scaling considerations
+- Strategies implemented for handling growth
+- Recommendations for future scaling needs
 
 ## Security and Reliability
 
 ### Security Implementation
-[400+ words based on actual security code]
+Write at least 400 words based on actual security code found:
+- Authentication and authorization mechanisms
+- Input validation and sanitization practices
+- Security vulnerabilities and mitigations
+- Secure data handling and encryption
 
 ### Error Handling and Recovery
-[400+ words on error strategies]
+Write at least 400 words analyzing:
+- Error handling patterns and strategies used
+- Failure recovery mechanisms
+- Logging and monitoring approaches
+- Graceful degradation patterns
 
 ## Deployment and Operations
 
@@ -262,15 +309,27 @@ graph LR
 ```
 
 ### Configuration and Environment Management
-[300+ words on configuration strategy]
+Write at least 300 words covering:
+- Configuration management strategies used
+- Environment-specific settings handling
+- Configuration validation and defaults
+- Best practices for config management
 
 ## Recommendations and Future Considerations
 
 ### Technical Improvements
-[400+ words of actionable recommendations]
+Write at least 400 words providing actionable recommendations:
+- Specific code improvements with clear benefits
+- Refactoring opportunities identified
+- Technical debt that should be addressed
+- Modernization opportunities
 
 ### Architectural Evolution
-[300+ words on future scaling and enhancement paths]
+Write at least 300 words discussing:
+- Future scaling and enhancement paths
+- Potential architectural changes for growth
+- Technology stack evolution recommendations
+- Long-term maintainability considerations
 ```
 
 **Quality Standards:**
@@ -279,6 +338,15 @@ graph LR
 - Every section must explain WHY, not just WHAT
 - All claims must reference actual code patterns observed
 - Focus on insights that demonstrate deep understanding
+
+**🚫 ABSOLUTELY FORBIDDEN - NO PLACEHOLDERS:**
+You MUST write complete, real content for every section. NEVER output placeholders like:
+- ❌ FORBIDDEN: "（扩展至 600 字...）", "（400 字...）", "(extend to 600 words...)"
+- ❌ FORBIDDEN: "[TODO: add more details]", "[expand this section]"
+- ❌ FORBIDDEN: "...further details to be added...", "...more content here..."
+- ✅ REQUIRED: Write actual, complete sentences and paragraphs with real technical analysis
+
+If you cannot write a full section due to insufficient information, write a shorter but COMPLETE analysis with what you can determine from the code. Never leave placeholder text.
 
 ## Phase 4: Strategic Enhancement (Maximum 3 Docs.MultiEdit)
 Use your 3 MultiEdit operations strategically to maximize impact.
@@ -343,6 +411,7 @@ Before completing, verify ALL items:
 8. ✅ **Evidence-Based**: Claims supported by actual code observations
 9. ✅ **Why-Focused**: Explained rationale, not just implementation
 10. ✅ **Actionable Insights**: Provided practical recommendations
+11. ✅ **NO PLACEHOLDERS**: Document contains ZERO placeholder text like "（扩展至...字）" or "[TODO]"
     </quality_validation_checklist>
 
 <execution_principles>
@@ -390,6 +459,7 @@ Before completing, verify ALL items:
 - No evidence-based claims
 - Under 5000 words total
 - Generic content not specific to the codebase
+- **Outputting placeholder text like "（扩展至 X 字...）" or "[TODO]"**
   </failure_conditions>
 
 Remember: You are creating documentation that developers will rely on for understanding, maintaining, and extending this codebase. Every section should provide genuine value through deep technical insights based on thorough code analysis.
