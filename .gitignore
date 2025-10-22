@@ -494,3 +494,21 @@ $RECYCLE.BIN/
 *lock.json
 seo-web
 /src/KoalaWiki/wwwroot
+
+# OpenDeepWiki specific
+/data/
+/docs/
+/repositories/
+/tests/
+web-site/lint-report.json
+web-site/src/pages/dev/
+
+# Old Mermaid fix scripts (replaced by v2)
+scripts/MermaidFixer/
+scripts/mermaid-validator/
+scripts/*mermaid*.sql
+scripts/*mermaid*.py
+scripts/*mermaid*.js
+scripts/diagnose_mermaid.sh
+scripts/force_refresh.sh
+scripts/run_aggressive_fix.sh
