@@ -535,19 +535,14 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
         // 使用v2系统性修复器（自动5阶段渐进式修复）
         const fixResult = await fixMermaidCode(
           cleanChart,
-          async (code: string) => {
-            try {
-              return await Promise.race([
-                mermaid.parse(code),
-                new Promise<boolean>((_, reject) =>
-                  setTimeout(() => reject(new Error('Parse timeout')), 3000)
-                )
-              ])
-            } catch (error) {
-              throw error
-            }
-          },
-          15 // 总共最多15次尝试（阶段1: 3次，阶段2: 10次，阶段3-5: 各1次）
+          async (candidate: string) =>
+            Promise.race([
+              mermaid.parse(candidate),
+              new Promise<boolean>((_, reject) =>
+                setTimeout(() => reject(new Error('Parse timeout')), 3000)
+              )
+            ]),
+          15
         )
 
         console.log('Fix result:', fixResult)

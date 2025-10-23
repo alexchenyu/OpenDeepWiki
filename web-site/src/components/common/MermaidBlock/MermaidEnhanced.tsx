@@ -231,18 +231,13 @@ export default function MermaidEnhanced({
         const cleanCode = preCleanMermaidCode(trimmedCode)
         const fixResult = await fixMermaidCode(
           cleanCode,
-          async (code: string) => {
-            try {
-              return await Promise.race([
-                mermaid.parse(code),
-                new Promise<boolean>((_, reject) =>
-                  setTimeout(() => reject(new Error('Parse timeout')), 3000)
-                )
-              ])
-            } catch (error) {
-              throw error
-            }
-          },
+          async (candidate: string) =>
+            Promise.race([
+              mermaid.parse(candidate),
+              new Promise<boolean>((_, reject) =>
+                setTimeout(() => reject(new Error('Parse timeout')), 3000)
+              )
+            ]),
           15 // 总共最多15次尝试（阶段1: 3次，阶段2: 10次，阶段3-5: 各1次）
         )
 

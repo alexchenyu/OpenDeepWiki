@@ -18,6 +18,20 @@ interface ErrorReport {
   renderTime?: number
 }
 
+interface MermaidDebugTools {
+  reporter: MermaidErrorReporter
+  getStats: () => ReturnType<MermaidErrorReporter['getStatistics']>
+  getErrors: () => ErrorReport[]
+  export: () => void
+  health: () => number
+}
+
+declare global {
+  interface Window {
+    __mermaidDebug?: MermaidDebugTools
+  }
+}
+
 class MermaidErrorReporter {
   private errors: ErrorReport[] = []
   private readonly maxErrors = 100
@@ -233,7 +247,7 @@ export const mermaidErrorReporter = new MermaidErrorReporter()
 
 // 开发环境：暴露到window对象方便调试
 if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
-  (window as any).__mermaidDebug = {
+  window.__mermaidDebug = {
     reporter: mermaidErrorReporter,
     getStats: () => mermaidErrorReporter.getStatistics(),
     getErrors: () => mermaidErrorReporter.getRecentErrors(),
