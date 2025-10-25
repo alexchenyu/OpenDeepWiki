@@ -1,3 +1,5 @@
+using System;
+using System.Linq;
 using System.Text.RegularExpressions;
 
 namespace KoalaWiki.KoalaWarehouse;
@@ -12,9 +14,14 @@ public class DocumentQualityValidator
     /// </summary>
     private static readonly string[] PlaceholderPatterns = new[]
     {
-        @"\（扩展至\s*\d+\s*字[^)]*\）",              // （扩展至 600 字...）
-        @"\（\d+\s*字[^)]*\）",                      // （400 字...）
-        @"\(extend\s+to\s+\d+\s+words[^)]*\)",      // (extend to 600 words...)
+        @"(?:(?:<del>\s*)|(?:~~\s*))?\（扩展至\s*[\d,]+\s*字[^）]*\）(?:\s*</del>|~~)?",              // （扩展至 600 字...）
+        @"(?:(?:<del>\s*)|(?:~~\s*))?\（约\s*[\d,]+\s*字[^）]*\）(?:\s*</del>|~~)?",                  // （约 1200 字，包括解释）
+        @"(?:(?:<del>\s*)|(?:~~\s*))?\（[^（）]*约\s*[\d,]+\s*字[^（）]*\）(?:\s*</del>|~~)?",        // （总字数约 8500 字）
+        @"(?:(?:<del>\s*)|(?:~~\s*))?\(约\s*[\d,]+\s*字[^)]*\)(?:\s*</del>|~~)?",                   // (约 1200 字，包括解释)
+        @"(?:(?:<del>\s*)|(?:~~\s*))?\([^()]*约\s*[\d,]+\s*字[^()]*\)(?:\s*</del>|~~)?",            // (总字数约 8500 字)
+        @"(?:(?:<del>\s*)|(?:~~\s*))?\（[\d,]+\s*字[^）]*\）(?:\s*</del>|~~)?",                      // （400 字...）
+        @"(?:(?:<del>\s*)|(?:~~\s*))?\([\d,]+\s*字[^)]*\)(?:\s*</del>|~~)?",                        // (400 字…)
+        @"(?:(?:<del>\s*)|(?:~~\s*))?\(extend\s+to\s+[\d,]+\s+words[^)]*\)(?:\s*</del>|~~)?",      // (extend to 600 words...)
         @"\[TODO[^\]]*\]",                           // [TODO: add more details]
         @"\[扩展[^\]]*\]",                           // [扩展示例至 1000 字]
         @"\.\.\.[^.]{0,20}字[^.]{0,20}\.\.\.",      // ...more content... 字 ...
@@ -57,11 +64,13 @@ public class DocumentQualityValidator
 
         if (foundPlaceholders.Count > 0)
         {
+            var distinctPlaceholders = foundPlaceholders.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+
             return new DocumentQualityResult
             {
                 IsValid = false,
-                ErrorMessage = $"文档包含 {foundPlaceholders.Count} 个占位符，需要重新生成",
-                PlaceholdersFound = foundPlaceholders.ToArray()
+                ErrorMessage = $"文档包含 {distinctPlaceholders.Length} 个占位符，需要重新生成",
+                PlaceholdersFound = distinctPlaceholders
             };
         }
 
@@ -74,7 +83,7 @@ public class DocumentQualityValidator
     }
 
     /// <summary>
-    /// 清理文档中的占位符（临时方案：直接删除）
+    /// 清理文档中的占位符和删除线标记
     /// </summary>
     /// <param name="content">文档内容</param>
     /// <returns>清理后的内容</returns>
@@ -87,14 +96,29 @@ public class DocumentQualityValidator
 
         var result = content;
 
+        // 第一步：清理占位符模式（可能包含 <del> 或 ~~ 包裹）
         foreach (var pattern in PlaceholderPatterns)
         {
             var regex = new Regex(pattern, RegexOptions.IgnoreCase | RegexOptions.Multiline);
             result = regex.Replace(result, "");
         }
 
-        // 清理多余的空行
+        // 第二步：移除所有 <del> 标签，但保留其内容
+        // 这样可以保留文本，只是去掉删除线样式
+        result = Regex.Replace(result, @"<del[^>]*>(.*?)</del>", "$1", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+        // 第三步：移除 Markdown 删除线语法 ~~text~~，但保留内容
+        result = Regex.Replace(result, @"~~(.+?)~~", "$1", RegexOptions.Multiline);
+
+        // 第四步：清理可能遗留的空标签
+        result = Regex.Replace(result, @"<del>\s*</del>", "", RegexOptions.IgnoreCase | RegexOptions.Multiline);
+        result = Regex.Replace(result, @"~~\s*~~", "", RegexOptions.Multiline);
+
+        // 第五步：清理多余的空行（占位符删除后可能留下的）
         result = Regex.Replace(result, @"\n{3,}", "\n\n");
+
+        // 第六步：清理多余的空格
+        result = Regex.Replace(result, @" {2,}", " ", RegexOptions.Multiline);
 
         return result.Trim();
     }

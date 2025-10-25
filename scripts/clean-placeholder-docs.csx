@@ -1,12 +1,21 @@
 #!/usr/bin/env dotnet-script
 #r "nuget: Microsoft.Data.Sqlite, 8.0.0"
 
+using System;
 using Microsoft.Data.Sqlite;
 using System.Text.RegularExpressions;
 
 // 数据库路径
 var dbPath = Environment.GetEnvironmentVariable("DB_PATH")
     ?? "/home/alex_chen/OpenDeepWiki/data/KoalaWiki.db";
+var connectionStringEnv = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING") ?? string.Empty;
+
+if (!string.IsNullOrEmpty(connectionStringEnv) &&
+    connectionStringEnv.Contains("Host=", StringComparison.OrdinalIgnoreCase))
+{
+    Console.WriteLine("❌ 当前脚本仅支持 SQLite。检测到 PostgreSQL 连接字符串，请在数据库中直接执行清理或扩展脚本以支持 PostgreSQL。");
+    return 1;
+}
 
 Console.WriteLine("======================================");
 Console.WriteLine("清理包含占位符的文档");
@@ -23,9 +32,14 @@ if (!File.Exists(dbPath))
 // 占位符模式
 var placeholderPatterns = new[]
 {
-    @"（扩展至\s*\d+\s*字[^)]*）",
-    @"（\d+\s*字[^)]*）",
-    @"\(extend\s+to\s+\d+\s+words[^)]*\)",
+    @"(?:(?:<del>\s*)|(?:~~\s*))?（扩展至\s*[\d,]+\s*字[^）]*）(?:\s*</del>|~~)?",
+    @"(?:(?:<del>\s*)|(?:~~\s*))?（约\s*[\d,]+\s*字[^）]*）(?:\s*</del>|~~)?",
+    @"(?:(?:<del>\s*)|(?:~~\s*))?（[^（）]*约\s*[\d,]+\s*字[^（）]*）(?:\s*</del>|~~)?",
+    @"(?:(?:<del>\s*)|(?:~~\s*))?（[\d,]+\s*字[^）]*）(?:\s*</del>|~~)?",
+    @"(?:(?:<del>\s*)|(?:~~\s*))?\(约\s*[\d,]+\s*字[^)]*\)(?:\s*</del>|~~)?",
+    @"(?:(?:<del>\s*)|(?:~~\s*))?\([^()]*约\s*[\d,]+\s*字[^()]*\)(?:\s*</del>|~~)?",
+    @"(?:(?:<del>\s*)|(?:~~\s*))?\([\d,]+\s*字[^)]*\)(?:\s*</del>|~~)?",
+    @"(?:(?:<del>\s*)|(?:~~\s*))?\(extend\s+to\s+[\d,]+\s+words[^)]*\)(?:\s*</del>|~~)?",
     @"\[TODO[^\]]*\]",
     @"\[扩展[^\]]*\]",
     @"包括故障排除\.\.\.）",
@@ -33,9 +47,9 @@ var placeholderPatterns = new[]
     @"包括[^)]*\.\.\.）",
 };
 
-var connectionString = $"Data Source={dbPath}";
+var sqliteConnectionString = $"Data Source={dbPath}";
 
-using var connection = new SqliteConnection(connectionString);
+using var connection = new SqliteConnection(sqliteConnectionString);
 connection.Open();
 
 // 查询所有文档

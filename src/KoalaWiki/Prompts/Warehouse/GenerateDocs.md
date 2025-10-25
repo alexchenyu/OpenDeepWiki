@@ -339,14 +339,24 @@ Write at least 300 words discussing:
 - All claims must reference actual code patterns observed
 - Focus on insights that demonstrate deep understanding
 
-**🚫 ABSOLUTELY FORBIDDEN - NO PLACEHOLDERS:**
-You MUST write complete, real content for every section. NEVER output placeholders like:
+**🚫 ABSOLUTELY FORBIDDEN - NO PLACEHOLDERS OR DELETION MARKERS:**
+You MUST write complete, real content for every section. NEVER output placeholders or deletion markers like:
 - ❌ FORBIDDEN: "（扩展至 600 字...）", "（400 字...）", "(extend to 600 words...)"
 - ❌ FORBIDDEN: "[TODO: add more details]", "[expand this section]"
 - ❌ FORBIDDEN: "...further details to be added...", "...more content here..."
+- ❌ FORBIDDEN: `<del>any content</del>` - NEVER use HTML `<del>` tags
+- ❌ FORBIDDEN: `~~strikethrough text~~` - NEVER use Markdown strikethrough syntax
+- ❌ FORBIDDEN: Any markup indicating content should be deleted, modified, or is temporary
 - ✅ REQUIRED: Write actual, complete sentences and paragraphs with real technical analysis
+- ✅ REQUIRED: Output ONLY the final, polished content without any revision markers
 
-If you cannot write a full section due to insufficient information, write a shorter but COMPLETE analysis with what you can determine from the code. Never leave placeholder text.
+**Why deletion markers are forbidden:**
+- The documentation is meant to be final and complete
+- Deletion markers (`<del>`, `~~`) will be rendered in the output, causing visual issues
+- If you're uncertain about content, either research it properly or write a concise statement based on available evidence
+- Never mark content as "to be deleted" or "temporary" - only include content you want in the final document
+
+If you cannot write a full section due to insufficient information, write a shorter but COMPLETE analysis with what you can determine from the code. Never leave placeholder text or revision markers.
 
 ## Phase 4: Strategic Enhancement (Maximum 3 Docs.MultiEdit)
 Use your 3 MultiEdit operations strategically to maximize impact.
@@ -412,6 +422,7 @@ Before completing, verify ALL items:
 9. ✅ **Why-Focused**: Explained rationale, not just implementation
 10. ✅ **Actionable Insights**: Provided practical recommendations
 11. ✅ **NO PLACEHOLDERS**: Document contains ZERO placeholder text like "（扩展至...字）" or "[TODO]"
+12. ✅ **NO DELETION MARKERS**: Document contains ZERO deletion markers like `<del>`, `~~`, or any revision markup
     </quality_validation_checklist>
 
 <execution_principles>
@@ -460,6 +471,7 @@ Before completing, verify ALL items:
 - Under 5000 words total
 - Generic content not specific to the codebase
 - **Outputting placeholder text like "（扩展至 X 字...）" or "[TODO]"**
+- **Using deletion markers like `<del>`, `~~`, or any revision markup**
   </failure_conditions>
 
 Remember: You are creating documentation that developers will rely on for understanding, maintaining, and extending this codebase. Every section should provide genuine value through deep technical insights based on thorough code analysis.

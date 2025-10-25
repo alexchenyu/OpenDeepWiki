@@ -10,12 +10,22 @@ import sys
 
 # 数据库路径
 DB_PATH = os.getenv('DB_PATH', '/home/alex_chen/OpenDeepWiki/data/KoalaWiki.db')
+DB_CONNECTION_STRING = os.getenv('DB_CONNECTION_STRING', '')
+
+if 'Host=' in DB_CONNECTION_STRING:
+    print("❌ 当前脚本仅支持 SQLite。检测到 PostgreSQL 连接字符串，请在数据库中直接执行清理或扩展脚本以支持 PostgreSQL。")
+    sys.exit(1)
 
 # 占位符模式
 PLACEHOLDER_PATTERNS = [
-    r'（扩展至\s*\d+\s*字[^)]*）',
-    r'（\d+\s*字[^)]*）',
-    r'\(extend\s+to\s+\d+\s+words[^)]*\)',
+    r'(?:(?:<del>\s*)|(?:~~\s*))?（扩展至\s*[\d,]+\s*字[^）]*）(?:\s*</del>|~~)?',
+    r'(?:(?:<del>\s*)|(?:~~\s*))?（约\s*[\d,]+\s*字[^）]*）(?:\s*</del>|~~)?',
+    r'(?:(?:<del>\s*)|(?:~~\s*))?（[^（）]*约\s*[\d,]+\s*字[^（）]*）(?:\s*</del>|~~)?',
+    r'(?:(?:<del>\s*)|(?:~~\s*))?（[\d,]+\s*字[^）]*）(?:\s*</del>|~~)?',
+    r'(?:(?:<del>\s*)|(?:~~\s*))?\(约\s*[\d,]+\s*字[^)]*\)(?:\s*</del>|~~)?',
+    r'(?:(?:<del>\s*)|(?:~~\s*))?\([^()]*约\s*[\d,]+\s*字[^()]*\)(?:\s*</del>|~~)?',
+    r'(?:(?:<del>\s*)|(?:~~\s*))?\([\d,]+\s*字[^)]*\)(?:\s*</del>|~~)?',
+    r'(?:(?:<del>\s*)|(?:~~\s*))?\(extend\s+to\s+[\d,]+\s+words[^)]*\)(?:\s*</del>|~~)?',
     r'\[TODO[^\]]*\]',
     r'\[扩展[^\]]*\]',
     r'包括故障排除\.\.\.）',

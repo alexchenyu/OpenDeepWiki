@@ -1,6 +1,8 @@
-﻿using System.Linq;
+﻿using System;
+using System.Linq;
 using System.Text;
 using KoalaWiki.KoalaWarehouse.Mermaid;
+using DocumentQualityValidator = KoalaWiki.KoalaWarehouse.DocumentQualityValidator;
 
 namespace KoalaWiki.KoalaWarehouse.DocumentPending;
 
@@ -487,6 +489,76 @@ public partial class DocumentPendingService
                     }
                 }
 
+                var generatedContent = docs.Content ?? string.Empty;
+
+                // 预先清理已知占位符，避免格式包裹导致检测遗漏
+                var preCleanedContent = DocumentQualityValidator.RemovePlaceholders(generatedContent);
+                if (!string.Equals(preCleanedContent, generatedContent, StringComparison.Ordinal))
+                {
+                    generatedContent = preCleanedContent;
+                    docs.Content = preCleanedContent;
+                }
+
+                // 文档质量校验，优先移除常见占位符
+                var qualityResult = DocumentQualityValidator.ValidateDocument(generatedContent);
+                if (!qualityResult.IsValid)
+                {
+                    if (qualityResult.PlaceholdersFound.Length > 0)
+                    {
+                        var cleanedContent = DocumentQualityValidator.RemovePlaceholders(generatedContent);
+                        var cleanedResult = DocumentQualityValidator.ValidateDocument(cleanedContent);
+
+                        if (!cleanedResult.IsValid)
+                        {
+                            throw new InvalidOperationException(
+                                $"文档质量验证失败：{cleanedResult.ErrorMessage}");
+                        }
+
+                        Log.Logger.Warning(
+                            "文档包含占位符，已自动清理后继续处理，文档：{name}，占位符示例：{placeholders}",
+                            catalog.Name,
+                            string.Join(" | ", qualityResult.PlaceholdersFound.Distinct().Take(3)));
+
+                        generatedContent = cleanedContent;
+                        docs.Content = cleanedContent;
+                        qualityResult = cleanedResult;
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException($"文档质量验证失败：{qualityResult.ErrorMessage}");
+                    }
+                }
+
+                var qualityMetrics = new DocumentQualityMetrics
+                {
+                    ContentLength = generatedContent.Length
+                };
+
+                var issueCount = qualityResult.PlaceholdersFound?.Length ?? 0;
+                qualityMetrics.QualityScore = CalculateQualityScore(qualityMetrics, issueCount);
+
+                var qualityWarnings = new List<string>();
+                if (qualityMetrics.ContentLength < MinContentLength)
+                {
+                    qualityWarnings.Add(
+                        $"文档长度 {qualityMetrics.ContentLength} 字，低于配置阈值 {MinContentLength}");
+                }
+
+                if (qualityMetrics.QualityScore < MinQualityScore)
+                {
+                    qualityWarnings.Add(
+                        $"文档质量评分 {qualityMetrics.QualityScore:F1} 低于阈值 {MinQualityScore:F1}");
+                }
+
+                if (qualityWarnings.Count > 0)
+                {
+                    Log.Logger.Warning(
+                        "文档质量存在风险，文档：{name}，警告：{warnings}",
+                        catalog.Name,
+                        string.Join(" | ", qualityWarnings));
+                }
+
+                docs.Content = generatedContent;
 
                 var fileItem = new DocumentFileItem()
                 {

@@ -1,10 +1,11 @@
-import React, { lazy, Suspense, useEffect, useState, useRef } from 'react'
+import React, { lazy, Suspense, useEffect, useState, useRef, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import rehypeRaw from 'rehype-raw'
 import { cn } from '@/lib/utils'
+import type { KatexOptions } from 'katex'
 import 'katex/dist/katex.min.css'
 import 'highlight.js/styles/github.css'
 
@@ -26,6 +27,39 @@ const generateHeadingId = (text: string): string => {
 const MermaidEnhanced = lazy(() => import('../MermaidBlock/MermaidEnhanced'))
 
 type FootnoteElement = HTMLElement & { _footnoteCleanup?: () => void }
+
+const cjkCharacterPattern = /[\u3400-\u9FFF\uF900-\uFAFF\u3000-\u303F\uFF00-\uFFEF]/u
+
+const stripInvalidChineseMathDelimiters = (input: string): string => {
+  if (!input) {
+    return input
+  }
+
+  let output = input
+
+  // 处理包含中文的块级数学公式（$$...$$）
+  output = output.replace(/(^|[^\\])\$\$([\s\S]*?)\$\$/g, (match: string, prefix: string, inner: string) => {
+    if (!cjkCharacterPattern.test(inner)) {
+      return match
+    }
+    return `${prefix}${inner}`
+  })
+
+  // 处理包含中文的行内数学公式（$...$），忽略被转义的美元符
+  output = output.replace(/(^|[^\\])\$([^\n$]*)\$/g, (match: string, prefix: string, inner: string) => {
+    if (!cjkCharacterPattern.test(inner)) {
+      return match
+    }
+    return `${prefix}${inner}`
+  })
+
+  return output
+}
+
+const katexOptions: KatexOptions = {
+  throwOnError: false,
+  strict: (errorCode) => (errorCode === 'unicodeTextInMathMode' ? 'ignore' : 'warn')
+}
 
 // Helper function to extract text content from React elements
 const extractTextFromElement = (element: React.ReactNode): string => {
@@ -62,6 +96,8 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
   const tooltipRef = useRef<HTMLDivElement>(null)
   const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
+  const processedContent = useMemo(() => stripInvalidChineseMathDelimiters(content), [content])
+
   // 处理页面加载时的锚点跳转
   useEffect(() => {
     const hash = window.location.hash
@@ -74,7 +110,7 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
         }
       }, 100)
     }
-  }, [content])
+  }, [processedContent])
 
   // 从content中提取脚注内容
   const extractFootnoteContent = (footnoteId: string): React.ReactNode => {
@@ -87,7 +123,7 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
 
     let match = null
     for (const pattern of patterns) {
-      match = content.match(pattern)
+      match = processedContent.match(pattern)
       if (match) break
     }
 
@@ -350,7 +386,7 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
         clearTimeout(hideTimeoutRef.current)
       }
     }
-  }, [content])
+  }, [processedContent])
 
   // 组件卸载时清理
   useEffect(() => {
@@ -381,7 +417,7 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[
           rehypeRaw,
-          rehypeKatex
+          [rehypeKatex, katexOptions]
           // REMOVED rehypeHighlight to prevent it from processing Mermaid code blocks
           // Syntax highlighting will be handled by our custom code component if needed
         ]}
@@ -902,6 +938,13 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
             }
             return <div className={className} {...props}>{children}</div>
           },
+          // 自定义 del 标签处理 - 防止意外的删除线显示
+          // 直接显示内容，不应用删除线样式
+          del: ({ children, ...props }) => (
+            <span className="text-muted-foreground" {...props}>
+              {children}
+            </span>
+          ),
           // 自定义脚注列表项
           li: ({ children, id, ...props }) => {
             // 检查是否是脚注列表项
@@ -952,8 +995,8 @@ export default function MarkdownRenderer({ content, className }: MarkdownRendere
           },
         }}
       >
-        {content}
-      </ReactMarkdown>
+        {processedContent}
+        </ReactMarkdown>
     </div>
 
     {/* 脚注弹出卡片 */}
