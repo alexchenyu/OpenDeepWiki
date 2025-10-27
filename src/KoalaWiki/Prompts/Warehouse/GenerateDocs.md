@@ -340,15 +340,29 @@ Write at least 300 words discussing:
 - Focus on insights that demonstrate deep understanding
 
 **🚫 ABSOLUTELY FORBIDDEN - NO PLACEHOLDERS OR DELETION MARKERS:**
-You MUST write complete, real content for every section. NEVER output placeholders or deletion markers like:
+You MUST write complete, real content for every section. NEVER output placeholders or deletion markers.
+
+**Forbidden Word Count Placeholders:**
+- ❌ FORBIDDEN: "（约700字）", "（约500字）", "（约600字）" - ANY Chinese word count markers
+- ❌ FORBIDDEN: "（700字）", "（500字）" - word count WITHOUT "约" is ALSO forbidden
+- ❌ FORBIDDEN: "(about 700 words)", "(approx. 600 words)" - ANY English word count markers
 - ❌ FORBIDDEN: "（扩展至 600 字...）", "（400 字...）", "(extend to 600 words...)"
+- ❌ FORBIDDEN: Word count markers in ANY format: 括号+数字+字
+
+**Forbidden TODO and Expansion Markers:**
 - ❌ FORBIDDEN: "[TODO: add more details]", "[expand this section]"
 - ❌ FORBIDDEN: "...further details to be added...", "...more content here..."
+- ❌ FORBIDDEN: "[扩展示例]", "[待补充]"
+
+**Forbidden Deletion and Revision Markers:**
 - ❌ FORBIDDEN: `<del>any content</del>` - NEVER use HTML `<del>` tags
 - ❌ FORBIDDEN: `~~strikethrough text~~` - NEVER use Markdown strikethrough syntax
 - ❌ FORBIDDEN: Any markup indicating content should be deleted, modified, or is temporary
+
+**Required Approach:**
 - ✅ REQUIRED: Write actual, complete sentences and paragraphs with real technical analysis
 - ✅ REQUIRED: Output ONLY the final, polished content without any revision markers
+- ✅ REQUIRED: If a section is short, that's OK - just ensure it's COMPLETE and has NO placeholders
 
 **Why deletion markers are forbidden:**
 - The documentation is meant to be final and complete
