@@ -110,17 +110,17 @@ export const HomePage = () => {
           </p>
 
           {/* Search Bar */}
-          <SearchBar
+          {/* <SearchBar
             value={searchValue}
             onChange={setSearchValue}
             onSearch={handleSearch}
             placeholder={t('home.search_placeholder')}
             size="lg"
             className="max-w-3xl"
-          />
+          /> */}
 
           {/* Quick Filters */}
-          <div className="flex items-center justify-center gap-2 mt-6 flex-wrap">
+          {/* <div className="flex items-center justify-center gap-2 mt-6 flex-wrap">
             <Badge variant="secondary" className="cursor-pointer hover:bg-secondary/80">
               {t('common.search')}
             </Badge>
@@ -136,7 +136,7 @@ export const HomePage = () => {
             <Badge variant="outline" className="cursor-pointer hover:bg-secondary/80">
               {t('home.repository_card.status.completed')}
             </Badge>
-          </div>
+          </div> */}
         </div>
       </section>
 
